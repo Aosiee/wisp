@@ -1,0 +1,94 @@
+#pragma once
+
+#include <glm/glm.hpp>
+#include <cctype>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <string>
+
+namespace wisp {
+
+// ---- HSV conversion --------------------------------------------------------
+
+inline glm::vec3 RgbToHsv(const glm::vec3& rgb)
+{
+	float r = rgb.r, g = rgb.g, b = rgb.b;
+	float maxC = std::max(r, std::max(g, b));
+	float minC = std::min(r, std::min(g, b));
+	float delta = maxC - minC;
+	glm::vec3 hsv{ 0.0f, 0.0f, maxC };
+	if (delta > 1e-6f)
+	{
+		hsv.y = delta / maxC;
+		if (maxC == r)
+			hsv.x = std::fmod((g - b) / delta, 6.0f);
+		else if (maxC == g)
+			hsv.x = (b - r) / delta + 2.0f;
+		else
+			hsv.x = (r - g) / delta + 4.0f;
+		hsv.x /= 6.0f;
+		if (hsv.x < 0.0f) hsv.x += 1.0f;
+	}
+	return hsv;
+}
+
+inline glm::vec3 HsvToRgb(const glm::vec3& hsv)
+{
+	float h = hsv.r * 6.0f;
+	float s = hsv.g, v = hsv.b;
+	int i = (int)std::floor(h) % 6;
+	float f = h - std::floor(h);
+	float p = v * (1.0f - s);
+	float q = v * (1.0f - f * s);
+	float t = v * (1.0f - (1.0f - f) * s);
+	switch (i)
+	{
+	case 0:  return { v, t, p };
+	case 1:  return { q, v, p };
+	case 2:  return { p, v, t };
+	case 3:  return { p, q, v };
+	case 4:  return { t, p, v };
+	default: return { v, p, q };
+	}
+}
+
+// ---- Hex strings ------------------------------------------------------------
+
+// 6-digit #RRGGBB (alpha is handled by its own bar).
+inline std::string RgbaToHex(const glm::vec4& rgba)
+{
+	auto byte = [](float f) {
+		int v = (int)std::lround(glm::clamp(f, 0.0f, 1.0f) * 255.0f);
+		return v;
+	};
+	char buf[8];
+	std::snprintf(buf, sizeof(buf), "#%02X%02X%02X", byte(rgba.r), byte(rgba.g), byte(rgba.b));
+	return buf;
+}
+
+// Accepts #RRGGBB or #RRGGBBAA (leading '#' optional). On success writes out
+// (alpha only touched by the 8-digit form) and returns true.
+inline bool HexToRgba(const std::string& text, glm::vec4& out)
+{
+	const char* s = text.c_str();
+	if (*s == '#') s++;
+	int len = (int)std::strlen(s);
+	if (len != 6 && len != 8) return false;
+	for (int i = 0; i < len; i++)
+		if (!std::isxdigit((unsigned char)s[i])) return false;
+
+	auto byte = [&](int idx) -> float {
+		unsigned int v = 0;
+		char pair[3] = { s[idx * 2], s[idx * 2 + 1], '\0' };
+		std::sscanf(pair, "%2x", &v);
+		return (float)v / 255.0f;
+	};
+	out.r = byte(0);
+	out.g = byte(1);
+	out.b = byte(2);
+	if (len == 8) out.a = byte(3);
+	return true;
+}
+
+} // namespace wisp
