@@ -145,6 +145,7 @@ struct ColourPickerStyle
 	glm::vec4 BarThumb{ 1.0f, 1.0f, 1.0f, 1.0f };
 	float BarThickness = 14.0f;
 	glm::vec2 PlaneSize{ 160.0f, 160.0f };
+	glm::vec2 WheelSize{ 180.0f, 180.0f };
 	float PopupPadding = 8.0f;
 	glm::vec4 LabelTint{ 0.8f, 0.8f, 0.85f, 1.0f };
 	bool operator==(const ColourPickerStyle&) const = default;

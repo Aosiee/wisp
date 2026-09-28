@@ -167,7 +167,7 @@ private:
 		{
 			uint32_t cp;
 			if((*p&0x80)==0){cp=*p;p++;}else if((*p&0xE0)==0xC0&&p+1<e){cp=((*p&0x1F)<<6)|(p[1]&0x3F);p+=2;}else if((*p&0xF0)==0xE0&&p+2<e){cp=((*p&0x0F)<<12)|((p[1]&0x3F)<<6)|(p[2]&0x3F);p+=3;}else{p++;continue;}
-			const GlyphInfo* g = m_FontCache->GetGlyph(m_Font, cp);
+			const GlyphInfo* g = m_FontCache->GetGlyph(m_Font, cp, m_FontSize);
 			if(g){glm::vec2 uv[4]={{g->AtlasU0,g->AtlasV0},{g->AtlasU1,g->AtlasV0},{g->AtlasU1,g->AtlasV1},{g->AtlasU0,g->AtlasV1}};dl.AddText(layer,{px+g->BearingX,y+m.Ascent+g->BearingY},std::string(1,(char)cp),uv,g->AdvanceX,g->Height,col,clip);px+=g->AdvanceX;}
 		}
 	}
@@ -239,7 +239,7 @@ public:
 			{
 				uint32_t cp;
 				if((*p&0x80)==0){cp=*p;p++;}else if((*p&0xE0)==0xC0&&p+1<e){cp=((*p&0x1F)<<6)|(p[1]&0x3F);p+=2;}else if((*p&0xF0)==0xE0&&p+2<e){cp=((*p&0x0F)<<12)|((p[1]&0x3F)<<6)|(p[2]&0x3F);p+=3;}else{p++;continue;}
-				const GlyphInfo* g = m_FontCache->GetGlyph(m_Font, cp);
+				const GlyphInfo* g = m_FontCache->GetGlyph(m_Font, cp, m_FontSize);
 				if(g){glm::vec2 uv[4]={{g->AtlasU0,g->AtlasV0},{g->AtlasU1,g->AtlasV0},{g->AtlasU1,g->AtlasV1},{g->AtlasU0,g->AtlasV1}};drawList.AddText(layerId+3,{px+g->BearingX,ty+m.Ascent+g->BearingY},std::string(1,(char)cp),uv,g->AdvanceX,g->Height,c,clipIdx);px+=g->AdvanceX;}
 			}
 

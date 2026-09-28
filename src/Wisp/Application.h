@@ -3,6 +3,7 @@
 #include "Wisp/Core.h"
 #include "Wisp/DrawList.h"
 #include "Wisp/Batcher.h"
+#include "TinyEngine/Renderer/UIImageHandle.h"
 #include <functional>
 #include <memory>
 #include <optional>
@@ -162,6 +163,8 @@ public:
 	void OnMouseWheel(void* window, float delta);
 	bool OnKeyDown(int key, int mods);
 	bool OnKeyDown(void* window, int key, int mods);
+	bool OnKeyUp(int key, int mods);
+	bool OnKeyUp(void* window, int key, int mods);
 	bool OnTextInput(uint32_t codepoint);
 	bool OnTextInput(void* window, uint32_t codepoint);
 
@@ -191,6 +194,12 @@ public:
 	// focus/tooltip/drag reference that points inside the subtree, so
 	// DiffHoverPaths and friends never fire events on freed widgets.
 	void ClearInputReferencesTo(Widget* subtree);
+
+	// Drops the global focus (firing OnFocusLost) when the focused widget
+	// lives inside `subtree`. Used by whole-tree teardowns (window context
+	// destruction, root replacement) that reset the tree directly instead
+	// of going through ClearInputReferencesTo's per-panel discipline.
+	void ClearFocusIfInside(Widget* subtree);
 
 	struct FocusEntry { Widget* widget; glm::vec2 min, max; int scopeId = 0; };
 	const std::vector<FocusEntry>& GetFocusRegistry() const { return m_FocusRegistry; }
@@ -228,6 +237,21 @@ public:
 	Widget* GetPickedWidget() const { return m_PickedWidget; }
 	void SetWidgetPickCallback(std::function<void(Widget*)> cb) { m_PickCallback = std::move(cb); }
 	void CancelWidgetPick() { m_PickCallback = nullptr; }
+
+	// A simpler "next click anywhere" capture (no widget candidate needed -
+	// e.g. the colour picker's eyedropper). Fires on the next mouse-down in
+	// any Wisp window, consuming the click (popups stay open).
+	void SetScreenPickCallback(std::function<void()> cb) { m_ScreenPickCallback = std::move(cb); }
+	void CancelScreenPick() { m_ScreenPickCallback = nullptr; }
+	bool HasScreenPick() const { return (bool)m_ScreenPickCallback; }
+
+	// An app-level cursor override (the eyedropper arms a crosshair). While
+	// set it wins over the hovered widget's cursor; applied immediately.
+	void SetCursorOverride(CursorType c) { m_CursorOverride = c; RefreshCursor(); }
+	void ClearCursorOverride() { m_CursorOverride = CursorType::Default; RefreshCursor(); }
+	CursorType GetCursorOverride() const { return m_CursorOverride; }
+	void RefreshCursor();
+	void ApplyCursor(WindowContext& ctx, CursorType desired);
 	void SetPickExclusion(Widget* w) { m_PickExclusion = w; }
 	Widget* GetPickExclusion() const { return m_PickExclusion; }
 	const std::vector<Widget*>& GetHoverPath() const; // focused context's hover path
@@ -246,10 +270,11 @@ public:
 	// Textured quads (Wisp images): app-managed textures on the shared
 	// renderer. Returns 0 on failure; DestroyTexture is a no-op for 0.
 	uint64_t CreateTexture(uint32_t width, uint32_t height, const uint8_t* rgbaData);
-	// Wrap an existing native
-	// GPU image (opaque backend handle) as a samplable texture; the caller
-	// keeps ownership of the image (DestroyTexture frees only the wrapper).
-	uint64_t WrapNativeImage(void* nativeImage, uint32_t width, uint32_t height);
+	// Wrap an engine-acquired
+	// UIImageHandle (a framebuffer colour attachment or a texture's image)
+	// as a samplable texture; the caller keeps ownership of the image
+	// (DestroyTexture frees only the wrapper).
+	uint64_t WrapUIImageHandle(const TinyEngine::UIImageHandle& handle);
 	void UpdateTexture(uint64_t handle, uint32_t x, uint32_t y, uint32_t width, uint32_t height, const uint8_t* rgbaData);
 	void DestroyTexture(uint64_t handle);
 
@@ -312,6 +337,8 @@ private:
 	// Pick mode (global flag; the picked widget tracks the focused window's
 	// hover - the reflector lives in one window and picks in it).
 	std::function<void(Widget*)> m_PickCallback;
+	std::function<void()> m_ScreenPickCallback;
+	CursorType m_CursorOverride = CursorType::Default;
 	PickMode m_PickMode = PickMode::None;
 	Widget*  m_PickedWidget = nullptr;   // freshest candidate = cursor's window's
 	Widget*  m_PickExclusion = nullptr;

@@ -53,7 +53,7 @@ public:
 
 	// IUIRenderer
 	uint64_t CreateTexture(uint32_t width, uint32_t height, const uint8_t* rgbaData) override;
-	uint64_t WrapNativeImage(void* nativeImage, uint32_t width, uint32_t height) override;
+	uint64_t WrapUIImageHandle(const TinyEngine::UIImageHandle& handle) override;
 	void UpdateTexture(uint64_t handle, uint32_t x, uint32_t y, uint32_t width, uint32_t height, const uint8_t* rgbaData) override;
 	void DestroyTexture(uint64_t handle) override;
 

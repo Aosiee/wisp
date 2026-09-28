@@ -80,7 +80,7 @@ public:
 			{
 				uint32_t cp;
 				if((*p&0x80)==0){cp=*p;p++;}else if((*p&0xE0)==0xC0&&p+1<e){cp=((*p&0x1F)<<6)|(p[1]&0x3F);p+=2;}else if((*p&0xF0)==0xE0&&p+2<e){cp=((*p&0x0F)<<12)|((p[1]&0x3F)<<6)|(p[2]&0x3F);p+=3;}else{p++;continue;}
-				const GlyphInfo* gi = m_FontCache->GetGlyph(m_Font, cp);
+				const GlyphInfo* gi = m_FontCache->GetGlyph(m_Font, cp, m_FontSize);
 				if(gi){glm::vec2 uv[4]={{gi->AtlasU0,gi->AtlasV0},{gi->AtlasU1,gi->AtlasV0},{gi->AtlasU1,gi->AtlasV1},{gi->AtlasU0,gi->AtlasV1}};drawList.AddText(layerId+3,{tx,ty+m.Ascent+gi->BearingY},std::string(1,(char)cp),uv,gi->AdvanceX,gi->Height,glm::vec4(1,1,1,1),clipIdx);tx+=gi->AdvanceX;}
 			}
 		}

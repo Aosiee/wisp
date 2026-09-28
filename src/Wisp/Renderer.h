@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <glm/glm.hpp>
 
+#include "TinyEngine/Renderer/UIImageHandle.h"
+
 namespace wisp {
 
 // ---- Batched Draw Data -----------------------------------------------------
@@ -49,10 +51,13 @@ public:
 
 	// Create an immutable 2D texture from RGBA pixel data. Returns an opaque handle.
 	virtual uint64_t CreateTexture(uint32_t width, uint32_t height, const uint8_t* rgbaData) = 0;
-	// Wrap an existing native
-	// GPU image (opaque backend handle) as a samplable texture. The image
-	// stays owned by the caller; DestroyTexture releases only the wrapper.
-	virtual uint64_t WrapNativeImage(void* nativeImage, uint32_t width, uint32_t height) = 0;
+	// Wrap an engine-acquired
+	// UIImageHandle (a Framebuffer's colour attachment or a Texture2D's
+	// image) as a samplable texture. The source image stays owned by the
+	// caller; DestroyTexture releases only this wrapper's view/descriptor
+	// set. The format comes from the handle, so both BGRA8 render targets
+	// and RGBA8 textures display correctly.
+	virtual uint64_t WrapUIImageHandle(const TinyEngine::UIImageHandle& handle) = 0;
 
 	// Update a sub-region of an existing texture.
 	virtual void UpdateTexture(uint64_t handle, uint32_t x, uint32_t y,

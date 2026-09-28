@@ -19,6 +19,7 @@ enum class DrawElementKind : uint8_t
 	Line,        // single line segment (extruded to quad)
 	Polyline,    // connected line strips (extruded with bevel joins)
 	Gradient,    // quad with 4 per-vertex colours
+	Triangle,    // 3 per-vertex colours, linear interpolation
 };
 
 // ---- Brush (for Image / Border backgrounds) --------------------------------
@@ -98,6 +99,10 @@ struct DrawElement
 	glm::vec4       GradientColorTR = { 1.0f, 1.0f, 1.0f, 1.0f };
 	glm::vec4       GradientColorBR = { 1.0f, 1.0f, 1.0f, 1.0f };
 	glm::vec4       GradientColorBL = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+	// Triangle
+	glm::vec2       TriP[3] = { {0,0}, {0,0}, {0,0} };
+	glm::vec4       TriC[3] = { {1,1,1,1}, {1,1,1,1}, {1,1,1,1} };
 };
 
 // ---- Draw List -------------------------------------------------------------
@@ -315,6 +320,39 @@ public:
 		e.GradientColorBL = colorBL;
 		e.ClipIndex = clipIndex;
 		Elements.push_back(e);
+	}
+
+	// A triangle with per-vertex colours (linear interpolation - the
+	// colour-picker wheel's hue/white/black triangle renders exactly).
+	void AddTriangle(int layerId,
+		const glm::vec2& p0, const glm::vec4& c0,
+		const glm::vec2& p1, const glm::vec4& c1,
+		const glm::vec2& p2, const glm::vec4& c2, int clipIndex)
+	{
+		DrawElement e;
+		e.Kind = DrawElementKind::Triangle;
+		e.LayerId = layerId;
+		e.TriP[0] = p0; e.TriC[0] = c0;
+		e.TriP[1] = p1; e.TriC[1] = c1;
+		e.TriP[2] = p2; e.TriC[2] = c2;
+		e.ClipIndex = clipIndex;
+		Elements.push_back(e);
+	}
+
+	// Glyph with an 8-direction outline behind it (classic text outline).
+	// The outline copies draw on `layerId`, the glyph on top at layerId+1.
+	void AddTextOutlined(int layerId, const glm::vec2& pos, const std::string& text,
+		const glm::vec2 atlasUVs[4], float advance, float height,
+		const glm::vec4& tint, const glm::vec4& outlineTint, float outlineThickness, int clipIndex)
+	{
+		static const float dirs[8][2] = {
+			{ 1, 0 }, { 1, 1 }, { 0, 1 }, { -1, 1 },
+			{ -1, 0 }, { -1, -1 }, { 0, -1 }, { 1, -1 }
+		};
+		for (const auto& d : dirs)
+			AddText(layerId, { pos.x + d[0] * outlineThickness, pos.y + d[1] * outlineThickness },
+				text, atlasUVs, advance, height, outlineTint, clipIndex);
+		AddText(layerId + 1, pos, text, atlasUVs, advance, height, tint, clipIndex);
 	}
 
 	void AddDropShadow(int layerId, const glm::vec2& pos, const glm::vec2& size,

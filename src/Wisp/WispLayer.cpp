@@ -79,6 +79,22 @@ void WispLayer::RouteEvent(TinyEngine::Event& event)
 		return app.OnTextInput(window, e.GetKeyCode());
 	});
 
+	dispatcher.Dispatch<TinyEngine::KeyReleasedEvent>([&app, window](TinyEngine::KeyReleasedEvent& e) -> bool {
+		// Same per-window modifier translation as the press path (on
+		// release the lifted key is already up in glfwGetKey, so the mods
+		// bit clears correctly for shift/ctrl releases).
+		GLFWwindow* win = (GLFWwindow*)window;
+		int mods = 0;
+		if (win)
+		{
+			if (glfwGetKey(win, TE_KEY_LEFT_SHIFT) == GLFW_PRESS || glfwGetKey(win, TE_KEY_RIGHT_SHIFT) == GLFW_PRESS)
+				mods |= 1;
+			if (glfwGetKey(win, TE_KEY_LEFT_CONTROL) == GLFW_PRESS || glfwGetKey(win, TE_KEY_RIGHT_CONTROL) == GLFW_PRESS)
+				mods |= 2;
+		}
+		return app.OnKeyUp(window, e.GetKeyCode(), mods);
+	});
+
 	dispatcher.Dispatch<TinyEngine::WindowFocusEvent>([&app, window](TinyEngine::WindowFocusEvent&) -> bool {
 		app.OnWindowFocusChanged(window, true);
 		return false;

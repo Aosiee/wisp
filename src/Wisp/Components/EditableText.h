@@ -44,6 +44,11 @@ public:
 	void SetWrapMode(WrapMode m) { m_WrapMode = m; InvalidateLayout(); }
 	void SetAutoWrap(bool b) { m_AutoWrap = b; InvalidateLayout(); }
 
+	// Overrides the minimum width (default 100 - the historical floor). A
+	// content-sized host (e.g. the viewport gizmo toolbar's increment box)
+	// lowers this so the field hugs its text; localization-safe sizing.
+	void SetMinimumWidth(float minWidth) { m_MinimumWidth = minWidth; InvalidateLayout(); }
+
 	glm::vec2 ComputeDesiredSize() const override
 	{
 		if (!m_FontCache) return { 100, 20 };
@@ -51,7 +56,7 @@ public:
 		if (m_WrapMode != WrapMode::None)
 			wrapW = m_AutoWrap ? m_CachedWrapWidth : -1.0f;
 		auto s = m_FontCache->MeasureText(m_Font, m_Text.empty() ? " " : m_Text, m_FontSize, wrapW, m_WrapMode);
-		return { std::max(s.x + 16.0f, 100.0f), std::max(s.y + 8.0f, 20.0f) };
+		return { std::max(s.x + 16.0f, m_MinimumWidth), std::max(s.y + 8.0f, 20.0f) };
 	}
 
 	void ArrangeChildren(const Geometry&, ArrangedChildren&) const override {}
@@ -116,17 +121,17 @@ public:
 				glyphIdx++; continue;
 			}
 
-			const GlyphInfo* gi = m_FontCache->GetGlyph(m_Font, cp);
+			const GlyphInfo* gi = m_FontCache->GetGlyph(m_Font, cp, m_FontSize);
 			if (!gi) { glyphIdx++; continue; }
 
 			float advance = gi->AdvanceX;
-			if (prevCp) advance += m_FontCache->GetKerning(m_Font, prevCp, cp);
+			if (prevCp) advance += m_FontCache->GetKerning(m_Font, prevCp, cp, m_FontSize);
 
 			// Word-wrap look-ahead at spaces
 			if (cp == ' ' && m_WrapMode == WrapMode::Word && effWrap > 0)
 			{
 				float ww = 0; const uint8_t* lk = p; uint32_t lp = cp;
-				while (lk < end) { uint32_t lc; if ((*lk&0x80)==0){lc=*lk;lk++;}else if((*lk&0xE0)==0xC0&&lk+1<end){lc=((*lk&0x1F)<<6)|(lk[1]&0x3F);lk+=2;}else if((*lk&0xF0)==0xE0&&lk+2<end){lc=((*lk&0x0F)<<12)|((lk[1]&0x3F)<<6)|(lk[2]&0x3F);lk+=3;}else break; if(lc==' '||lc=='\n')break; auto* lgi=m_FontCache->GetGlyph(m_Font,lc); float la=lgi?lgi->AdvanceX:0; if(lp!=' ') la+=m_FontCache->GetKerning(m_Font,lp,lc); ww+=std::round(la); lp=lc; }
+				while (lk < end) { uint32_t lc; if ((*lk&0x80)==0){lc=*lk;lk++;}else if((*lk&0xE0)==0xC0&&lk+1<end){lc=((*lk&0x1F)<<6)|(lk[1]&0x3F);lk+=2;}else if((*lk&0xF0)==0xE0&&lk+2<end){lc=((*lk&0x0F)<<12)|((lk[1]&0x3F)<<6)|(lk[2]&0x3F);lk+=3;}else break; if(lc==' '||lc=='\n')break; auto* lgi=m_FontCache->GetGlyph(m_Font,lc,m_FontSize); float la=lgi?lgi->AdvanceX:0; if(lp!=' ') la+=m_FontCache->GetKerning(m_Font,lp,lc,m_FontSize); ww+=std::round(la); lp=lc; }
 				if (penX + advance + ww > absRight && penX > startX) { penX = startX; penY += metrics.LineHeight; prevCp = 0; lastSpaceP = nullptr; if (glyphIdx <= m_CaretPos) { caretX = penX; caretY = penY; } m_GlyphPositions.push_back({penX - m_CachedAbsX, penY - m_CachedAbsY, (float)glyphIdx}); glyphIdx++; continue; }
 				lastSpaceP = p;
 			}
@@ -281,6 +286,12 @@ public:
 			m_Anchor = m_CaretPos;
 			ResetBlink(); return Reply::Handled_();
 
+		case 32: // Space — consume the keydown so the router's global
+			// "Space clicks the focused widget" never fires a phantom
+			// click mid-edit (the space CHARACTER still arrives through
+			// OnTextInput for string fields).
+			return Reply::Handled_();
+
 		case 257: // Enter
 			if (shift)
 			{
@@ -339,7 +350,7 @@ public:
 			ResetBlink(); return Reply::Handled_();
 
 		case 263: // Left
-			if (!m_IsEditing) return Reply::Unhandled();
+			if (!HasFocus()) return Reply::Unhandled();
 			if (ctrl)
 			{
 				// Ctrl+Left: move to previous word boundary
@@ -351,7 +362,7 @@ public:
 			ResetBlink(); return Reply::Handled_();
 
 		case 262: // Right
-			if (!m_IsEditing) return Reply::Unhandled();
+			if (!HasFocus()) return Reply::Unhandled();
 			if (ctrl)
 			{
 				// Ctrl+Right: move to next word boundary
@@ -374,13 +385,13 @@ public:
 			ResetBlink(); return Reply::Handled_();
 
 		case 265: // Up — Home on single-line
-			if (!m_IsEditing) return Reply::Unhandled();
+			if (!HasFocus()) return Reply::Unhandled();
 			m_CaretPos = 0;
 			if (!shift) m_Anchor = 0;
 			ResetBlink(); return Reply::Handled_();
 
 		case 264: // Down — End on single-line
-			if (!m_IsEditing) return Reply::Unhandled();
+			if (!HasFocus()) return Reply::Unhandled();
 			m_CaretPos = (int)m_Text.size();
 			if (!shift) m_Anchor = m_CaretPos;
 			ResetBlink(); return Reply::Handled_();
@@ -415,13 +426,14 @@ public:
 
 	NavigationReply OnNavigation(const FocusEvent& ev) override
 	{
-		if (m_IsEditing) return NavigationReply::Stop;
+		if (HasFocus()) return NavigationReply::Stop;
 		return NavigationReply::Escape;
 	}
 
 private:
 	void NotifyChanged() { if (m_OnTextChanged) m_OnTextChanged(m_Text); InvalidateLayout(); }
 	void ResetBlink() { m_BlinkVisible = true; }
+	float m_MinimumWidth = 100.0f;
 
 	void DeleteSelection()
 	{

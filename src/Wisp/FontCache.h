@@ -52,11 +52,11 @@ public:
 	// Load a font from memory. Returns a handle for subsequent API calls.
 	FontHandle AddFont(const uint8_t* ttfData, size_t ttfSize);
 
-	// Set the current font size for glyph rasterization.
-	void SetFontSize(FontHandle font, float pixelSize);
-
-	// Retrieves or rasterizes the glyph for a codepoint.
-	const GlyphInfo* GetGlyph(FontHandle font, uint32_t codepoint);
+	// Retrieves or rasterizes the glyph for a codepoint at the given pixel
+	// size. The size is part of the cache key - callers always pass the
+	// size they intend to draw/measure at (the face no longer carries a
+	// mutable "current" size that cross-talked between widgets).
+	const GlyphInfo* GetGlyph(FontHandle font, uint32_t codepoint, float pixelSize);
 
 	// Measure text without rasterizing missing glyphs.
 	glm::vec2 MeasureText(FontHandle font, const std::string& text, float pixelSize, float wrapWidth = -1.0f, WrapMode wrapMode = WrapMode::Character);
@@ -72,17 +72,15 @@ public:
 	// atlas rebuilds (with a full vkDeviceWaitIdle) every single frame.
 	void     ClearAtlasDirty() const { m_AtlasDirty = false; }
 
-	// Font metrics for the current size.
+	// Font metrics for the given size.
 	FontMetrics GetMetrics(FontHandle font, float pixelSize);
-	float GetKerning(FontHandle font, uint32_t left, uint32_t right);
+	float GetKerning(FontHandle font, uint32_t left, uint32_t right, float pixelSize);
 
 private:
 	struct FontFace
 	{
 		std::vector<uint8_t> TtfData;
 		int                  StbFontOffset = 0; // stb_truetype font index
-		float                CurrentSizePx = 0.0f;
-		float                Scale = 0.0f;      // stbtt_ScaleForPixelHeight result
 	};
 
 	struct GlyphKey
@@ -96,7 +94,7 @@ private:
 
 	FontFace* GetFace(FontHandle handle);
 
-	bool RasterizeGlyph(FontHandle font, uint32_t codepoint, GlyphInfo& outInfo);
+	bool RasterizeGlyph(FontHandle font, uint32_t codepoint, float pixelSize, GlyphInfo& outInfo);
 	bool PackRect(uint32_t w, uint32_t h, uint32_t& outX, uint32_t& outY);
 	void GrowAtlas();
 

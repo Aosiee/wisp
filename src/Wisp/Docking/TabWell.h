@@ -7,6 +7,7 @@
 #include "Wisp/Theme.h"
 #include "Wisp/Docking/DockModel.h"
 #include "Wisp/Docking/DockPaint.h"
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <string>
@@ -92,7 +93,11 @@ public:
 		}
 		float barW = 4.0f;
 		for (const auto& n : m_DisplayNames)
-			barW += dockpaint::MeasureWidth(m_FontCache, m_Font, n, 1.0f) + 44.0f;
+			barW += dockpaint::MeasureWidth(m_FontCache, m_Font, n, m_FontSize, 1.0f) + 44.0f;
+		// The strip scrolls when the tabs overflow, so the desired width
+		// must not demand the full tab sum (that pinned the well wide and
+		// forced neighbours to shrink instead).
+		barW = std::min(barW, 400.0f);
 		return { std::max(contentW, barW), m_Style.TabHeight + contentH };
 	}
 
@@ -124,41 +129,113 @@ public:
 		// Tab bar background strip
 		drawList.AddBox(layerId + 1, absPos, { geom.LocalSize.x, m_Style.TabHeight }, glm::vec4(0.05f, 0.05f, 0.08f, 1.0f), clip);
 
-		// Tabs
-		glm::vec2 mouse = UIApplication::IsValid() ? UIApplication::Get().GetMousePos() : glm::vec2(-1, -1);
-		m_TabRects.clear();
-		float x = absPos.x + 2.0f;
+		// ---- Tab strip (scrollable) ----
+		// Pass 1: natural widths + scroll bookkeeping. Tabs are sized to
+		// their label - the text always renders at full scale (never
+		// shrunk to fit) - and the strip scrolls horizontally when the
+		// tabs overflow the well width.
+		// The arrow slots sit at the strip's OWN edges and take space:
+		// while overflowing with arrows shown, the tab strip is inset so
+		// no tab can end up behind an arrow.
+		const float arrowSlot = 22.0f;
+		const bool arrowsShown = m_ShowScrollArrows;
+		float stripX = absPos.x;
+		float stripW = geom.LocalSize.x;
+		std::vector<float> widths(m_Tabs.size());
+		float totalW = 2.0f;
 		for (int i = 0; i < (int)m_Tabs.size(); i++)
 		{
-			float labelW = dockpaint::MeasureWidth(m_FontCache, m_Font, m_DisplayNames[i], 1.0f);
-			float w = labelW + 40.0f;
+			float labelW = dockpaint::MeasureWidth(m_FontCache, m_Font, m_DisplayNames[i], m_FontSize, 1.0f);
+			widths[i] = std::max(labelW + 40.0f, 60.0f);
+			totalW += widths[i] + 2.0f;
+		}
+		bool fullOverflow = totalW > stripW;
+		if (fullOverflow && arrowsShown)
+		{
+			stripX += arrowSlot;
+			stripW = std::max(40.0f, stripW - arrowSlot * 2.0f);
+		}
+		m_Overflow = totalW > stripW;
+		m_MaxScrollX = std::max(0.0f, totalW - stripW);
+		m_ScrollX = std::clamp(m_ScrollX, 0.0f, m_MaxScrollX);
+
+		// When the active tab changes, bring it into view once - manual
+		// scrolling after that is left alone.
+		if (m_ActiveIndex >= 0 && m_ActiveIndex < (int)m_Tabs.size())
+		{
+			if (m_ActiveIndex != m_LastActiveForScroll)
+			{
+				m_LastActiveForScroll = m_ActiveIndex;
+				if (m_Overflow)
+				{
+					float ax = 2.0f;
+					for (int i = 0; i < m_ActiveIndex; i++) ax += widths[i] + 2.0f;
+					if (ax < m_ScrollX)
+						m_ScrollX = std::max(0.0f, ax - 2.0f);
+					else if (ax + widths[m_ActiveIndex] > m_ScrollX + stripW)
+						m_ScrollX = std::min(m_MaxScrollX, ax + widths[m_ActiveIndex] - stripW + 2.0f);
+				}
+			}
+		}
+
+		// Pass 2: draw the strip, clipped so scrolled-out tabs can never
+		// paint past the bar (onto a divider or a neighbouring panel).
+		int stripClip = drawList.PushClip({ stripX, absPos.y, stripW, m_Style.TabHeight }, clip);
+		glm::vec2 mouse = UIApplication::IsValid() ? UIApplication::Get().GetMousePos() : glm::vec2(-1, -1);
+		m_TabRects.clear();
+		float x = stripX + 2.0f - m_ScrollX;
+		for (int i = 0; i < (int)m_Tabs.size(); i++)
+		{
+			float w = widths[i];
 			bool active = (i == m_ActiveIndex);
 			bool hovered = (mouse.x >= x && mouse.x <= x + w && mouse.y >= absPos.y && mouse.y <= absPos.y + m_Style.TabHeight);
 			m_TabRects.push_back({ x, absPos.y, w, m_Style.TabHeight });
 
 			glm::vec4 bg = active ? m_Style.Active.Tint : (hovered ? m_Style.Hovered.Tint : m_Style.Inactive.Tint);
-			drawList.AddBox(layerId + 2, { x, absPos.y }, { w, m_Style.TabHeight }, bg, clip);
+			drawList.AddBox(layerId + 2, { x, absPos.y }, { w, m_Style.TabHeight }, bg, stripClip);
 			if (active)
-				drawList.AddBox(layerId + 2, { x, absPos.y }, { w, 2.0f }, m_Style.Active.Tint * 1.6f, clip);
+				drawList.AddBox(layerId + 2, { x, absPos.y }, { w, 2.0f }, m_Style.Active.Tint * 1.6f, stripClip);
 
-			// Label
+			// Label (full scale - tab widths follow the text, not the
+			// other way round).
 			float inkTop, inkBottom;
-			dockpaint::MeasureInkBox(m_FontCache, m_Font, m_DisplayNames[i], 1.0f, inkTop, inkBottom);
+			dockpaint::MeasureInkBox(m_FontCache, m_Font, m_DisplayNames[i], m_FontSize, 1.0f, inkTop, inkBottom);
 			float ly = absPos.y + (m_Style.TabHeight - (inkBottom - inkTop)) * 0.5f - inkTop;
-			dockpaint::PaintText(drawList, m_FontCache, m_Font, layerId + 3,
+			dockpaint::PaintText(drawList, m_FontCache, m_Font, m_FontSize, layerId + 3,
 				{ x + 8.0f, ly }, m_DisplayNames[i],
-				active ? m_Style.LabelActiveTint : m_Style.LabelTint, clip, 1.0f);
+				active ? m_Style.LabelActiveTint : m_Style.LabelTint, stripClip, 1.0f);
 
 			// Close button (x)
 			float cx = x + w - 16.0f;
 			float cy = absPos.y + (m_Style.TabHeight - 12.0f) * 0.5f;
 			bool closeHovered = (mouse.x >= cx - 2.0f && mouse.x <= cx + 14.0f && mouse.y >= cy - 2.0f && mouse.y <= cy + 14.0f);
 			if (closeHovered)
-				drawList.AddBox(layerId + 3, { cx - 2.0f, cy - 2.0f }, { 14.0f, 14.0f }, m_Style.CloseButton.Tint, clip);
-			drawList.AddBox(layerId + 4, { cx + 4.0f, cy + 5.5f }, { 4.0f, 1.0f }, m_Style.CloseTint, clip);
-			drawList.AddBox(layerId + 4, { cx + 5.5f, cy + 4.0f }, { 1.0f, 4.0f }, m_Style.CloseTint, clip);
+				drawList.AddBox(layerId + 3, { cx - 2.0f, cy - 2.0f }, { 14.0f, 14.0f }, m_Style.CloseButton.Tint, stripClip);
+			drawList.AddBox(layerId + 4, { cx + 4.0f, cy + 5.5f }, { 4.0f, 1.0f }, m_Style.CloseTint, stripClip);
+			drawList.AddBox(layerId + 4, { cx + 5.5f, cy + 4.0f }, { 1.0f, 4.0f }, m_Style.CloseTint, stripClip);
 
 			x += w + 2.0f;
+		}
+
+		// Scroll arrows at the strip's OWN edges, only while overflowing
+		// (and only when the toggle is on). They occupy their edge slots -
+		// the tab strip above is inset by the same amount, so the arrows
+		// never cover a tab.
+		ComputeScrollArrowRects(absPos, geom.LocalSize.x, arrowsShown);
+		if (m_Overflow && arrowsShown)
+		{
+			auto paintArrow = [&](const glm::vec4& r, const char* glyph) {
+				bool hovered = (mouse.x >= r.x && mouse.x <= r.x + r.z && mouse.y >= r.y && mouse.y <= r.y + r.w);
+				drawList.AddBox(layerId + 5, { r.x, r.y }, { r.z, r.w },
+					hovered ? m_Style.Hovered.Tint : glm::vec4(0.11f, 0.11f, 0.18f, 1.0f), clip);
+				float inkTop, inkBottom;
+				dockpaint::MeasureInkBox(m_FontCache, m_Font, glyph, m_FontSize, 1.0f, inkTop, inkBottom);
+				float gy = r.y + (r.w - (inkBottom - inkTop)) * 0.5f - inkTop;
+				dockpaint::PaintText(drawList, m_FontCache, m_Font, m_FontSize, layerId + 6,
+					{ r.x + (r.z - 7.0f) * 0.5f, gy }, glyph, glm::vec4(0.75f, 0.75f, 0.8f, 1.0f), clip, 1.0f);
+			};
+			paintArrow(m_ScrollArrowL, "<");
+			paintArrow(m_ScrollArrowR, ">");
 		}
 
 		// Content
@@ -177,10 +254,17 @@ public:
 			cs.ColorAndOpacity = m_Content->GetRenderTint();
 			cs.ColorAndOpacity.a *= m_Content->GetRenderOpacity();
 			for (auto& child : arranged)
-				child.WidgetPtr->OnPaint(childArgs, child.Geom, drawList, layerId + 5, cs);
+				child.WidgetPtr->OnPaint(childArgs, child.Geom, drawList, layerId + 7, cs);
 		}
-		return layerId + 6;
+		return layerId + 8;
 	}
+
+	// Scroll arrows (shown only while the strip overflows). Toggleable: an
+	// app that wants a plain clipped strip can turn them off. When shown
+	// they sit on their OWN sides and take space - the tab strip ends
+	// before the arrow, so no tab ever sits half-behind one.
+	void SetShowScrollArrows(bool show) { m_ShowScrollArrows = show; InvalidateLayout(); }
+	bool GetShowScrollArrows() const { return m_ShowScrollArrows; }
 
 	// Tab index under a point (absolute coords), or -1.
 	int HitTestTabs(const glm::vec2& absPos) const
@@ -204,6 +288,32 @@ public:
 		return absPos.x >= cx - 2.0f && absPos.x <= cx + 14.0f && absPos.y >= cy - 2.0f && absPos.y <= cy + 14.0f;
 	}
 
+	// Scroll-arrow hit test: -1 = left, +1 = right, 0 = neither (the
+	// arrows only exist while the strip overflows).
+	int HitTestScrollArrow(const glm::vec2& absPos) const
+	{
+		if (!m_Overflow) return 0;
+		auto inside = [&](const glm::vec4& r) {
+			return r.z > 0.0f && absPos.x >= r.x && absPos.x <= r.x + r.z
+				&& absPos.y >= r.y && absPos.y <= r.y + r.w;
+		};
+		if (inside(m_ScrollArrowL)) return -1;
+		if (inside(m_ScrollArrowR)) return 1;
+		return 0;
+	}
+
+	// Horizontal scroll: wheel over the tab strip pans the tabs. The strip
+	// only scrolls while it overflows (the content area below the bar
+	// keeps the panel's own wheel handling).
+	Reply OnMouseWheel(const glm::vec2& absPos, float delta) override
+	{
+		if (!m_Overflow || m_MaxScrollX <= 0.0f) return Reply::Unhandled();
+		if (absPos.y < m_LastAbsRect.y || absPos.y > m_LastAbsRect.y + m_Style.TabHeight)
+			return Reply::Unhandled();
+		m_ScrollX = std::clamp(m_ScrollX - delta * 48.0f, 0.0f, m_MaxScrollX);
+		return Reply::Handled_();
+	}
+
 	// Defined in DockSpace.h (needs the complete DockSpace type).
 	Reply OnMouseButtonDown(const glm::vec2& absPos, int button) override;
 	Reply OnMouseButtonUp(const glm::vec2& absPos, int button) override;
@@ -215,6 +325,20 @@ public:
 	}
 
 private:
+	void ComputeScrollArrowRects(const glm::vec2& absPos, float barW, bool arrowsShown) const
+	{
+		if (!arrowsShown)
+		{
+			m_ScrollArrowL = { 0, 0, 0, 0 };
+			m_ScrollArrowR = { 0, 0, 0, 0 };
+			return;
+		}
+		const float arrowW = 20.0f, arrowH = 20.0f;
+		float ay = absPos.y + (m_Style.TabHeight - arrowH) * 0.5f;
+		m_ScrollArrowL = { absPos.x + 2.0f, ay, arrowW, arrowH };
+		m_ScrollArrowR = { absPos.x + barW - arrowW - 2.0f, ay, arrowW, arrowH };
+	}
+
 	DockSpace* m_DockSpace = nullptr;
 	dock::NodeId m_NodeId = 0;
 	FontCache* m_FontCache = nullptr;
@@ -231,6 +355,16 @@ private:
 	mutable TabStyle m_Style;
 	mutable bool m_StyleDirty = true;
 	int m_PressedTab = -1;
+
+	// Horizontal tab-strip scroll state (updated during paint; consumed by
+	// the wheel/arrow handlers between paints).
+	mutable float m_ScrollX = 0.0f;
+	mutable float m_MaxScrollX = 0.0f;
+	mutable bool m_Overflow = false;
+	mutable int m_LastActiveForScroll = -1;
+	mutable glm::vec4 m_ScrollArrowL{ 0, 0, 0, 0 };
+	mutable glm::vec4 m_ScrollArrowR{ 0, 0, 0, 0 };
+	bool m_ShowScrollArrows = true;
 };
 
 } // namespace wisp

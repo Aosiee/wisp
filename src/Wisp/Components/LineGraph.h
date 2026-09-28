@@ -223,7 +223,7 @@ public:
 				float lx = gx + gw - ms.x - 4;
 				float ly = by - ms.y - 1;
 				glm::vec4 labelCol = bl.Color; labelCol.a = 0.85f;
-				PaintText(drawList, layerId+3, {lx, ly}, bl.Label, labelCol, clip);
+				PaintText(drawList, layerId+3, {lx, ly}, bl.Label, labelCol, clip, m_FontSize * 0.55f);
 			}
 		}
 
@@ -258,7 +258,7 @@ public:
 				drawList.AddBox(layerId+4, {lx - 2, ly - 1}, {ms.x + 4, ms.y + 2},
 					{0,0,0,0.45f}, clip);
 				glm::vec4 labelCol = col; labelCol.a = 1.0f;
-				PaintText(drawList, layerId+4, {lx, ly}, m_SeriesNames[si], labelCol, clip);
+				PaintText(drawList, layerId+4, {lx, ly}, m_SeriesNames[si], labelCol, clip, m_FontSize * 0.55f);
 			}
 		}
 
@@ -279,7 +279,7 @@ public:
 			{
 				auto ms = m_FontCache->MeasureText(m_Font, sp.Label, m_FontSize * 0.7f);
 				float lx = sx - ms.x * 0.5f, ly = sy - 16 - ms.y;
-				PaintText(drawList, layerId+5, {lx, ly}, sp.Label, sp.Color, clip);
+				PaintText(drawList, layerId+5, {lx, ly}, sp.Label, sp.Color, clip, m_FontSize * 0.7f);
 			}
 		}
 
@@ -295,7 +295,7 @@ public:
 				else snprintf(buf, sizeof(buf), "%.1f", v);
 				auto ms = m_FontCache->MeasureText(m_Font, buf, m_FontSize * 0.6f);
 				float ay = toY(v) - ms.y * 0.5f;
-				PaintText(drawList, layerId+6, {gx - ms.x - 4, ay}, buf, m_Style.AxisLabel, clip);
+				PaintText(drawList, layerId+6, {gx - ms.x - 4, ay}, buf, m_Style.AxisLabel, clip, m_FontSize * 0.6f);
 			}
 		}
 
@@ -311,7 +311,7 @@ public:
 				char buf[64];
 				float latest = s ? s->Latest() : 0;
 				snprintf(buf, sizeof(buf), "%s %.1f", m_SeriesNames[si].c_str(), latest);
-				PaintText(drawList, layerId+7, {legX + 14, legY - 1}, buf, {0.8f,0.8f,0.85f,1}, clip);
+				PaintText(drawList, layerId+7, {legX + 14, legY - 1}, buf, {0.8f,0.8f,0.85f,1}, clip, m_FontSize);
 			}
 			legY += 16;
 		}
@@ -321,7 +321,7 @@ public:
 
 private:
 	void PaintText(DrawList& dl, int layer, const glm::vec2& pos, const std::string& text,
-		const glm::vec4& tint, int clip) const
+		const glm::vec4& tint, int clip, float pixelSize) const
 	{
 		if (!m_FontCache || text.empty()) return;
 		float px = pos.x, py = pos.y;
@@ -334,7 +334,7 @@ private:
 			else if((*p&0xE0)==0xC0&&p+1<e){cp=((*p&0x1F)<<6)|(p[1]&0x3F);p+=2;}
 			else if((*p&0xF0)==0xE0&&p+2<e){cp=((*p&0x0F)<<12)|((p[1]&0x3F)<<6)|(p[2]&0x3F);p+=3;}
 			else{p++;continue;}
-			const GlyphInfo* gi = m_FontCache->GetGlyph(m_Font, cp);
+			const GlyphInfo* gi = m_FontCache->GetGlyph(m_Font, cp, pixelSize);
 			if(gi)
 			{
 				glm::vec2 uv[4]={{gi->AtlasU0,gi->AtlasV0},{gi->AtlasU1,gi->AtlasV0},{gi->AtlasU1,gi->AtlasV1},{gi->AtlasU0,gi->AtlasV1}};

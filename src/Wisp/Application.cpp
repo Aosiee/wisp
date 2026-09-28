@@ -1,9 +1,11 @@
 #include "Wisp/Application.h"
 #include "Wisp/Batcher.h"
 #include "Wisp/RendererVulkan.h"
+#include "DebugDraw.h"
+#include "TinyEngine/Renderer/DebugDrawCommon.h"
+#include "TinyEngine/Renderer/RendererDebug.h"
 #include "Wisp/Widgets.h"
-#include "Platform/Vulkan/VulkanFrameDrawCallback.h"
-#include "Platform/WindowCaps.h"
+#include "TinyEngine/Renderer/RenderPassContext.h"
 #include "TinyEngine/Core/Application.h" // for GetWindow()
 #include "TinyEngine/Core/Input.h"
 #include <GLFW/glfw3.h>
@@ -35,27 +37,30 @@ void UIApplication::Init(FontCache* fontCache)
 	s_Instance->m_Contexts.push_back(std::move(ctx));
 
 	// Register draw callback — Wisp handles its own rendering, per window.
-	TinyEngine::SetVulkanWispDrawCallback([](VkCommandBuffer cb, void* windowHandle, VkExtent2D extent, VkFormat) {
+	// The context is backend-neutral: the command buffer travels as an
+	// opaque handle into RendererVulkan (the backend), the window handle
+	// resolves the per-window context.
+	TinyEngine::SetWispDrawCallback([](const TinyEngine::RenderPassContext& context) {
 		UIApplication& app = Get();
 
-		WindowContext* ctx = app.GetWindowContext(windowHandle);
+		WindowContext* ctx = app.GetWindowContext(context.WindowHandle);
 		if (!ctx)
 		{
 			// First frame of the main window: bind the default context.
 			ctx = app.GetDefaultContext();
 			if (!ctx || ctx->Window != nullptr) return;
-			ctx->Window = windowHandle;
+			ctx->Window = context.WindowHandle;
 		}
 		if (!ctx->Root) return;
 
 		app.TickAnimation(1.0f / 60.0f);
 
-		uint32_t w = extent.width;
-		uint32_t h = extent.height;
+		uint32_t w = context.Width;
+		uint32_t h = context.Height;
 		app.Tick(*ctx, w, h);
 
 		// Per-window mouse scale (logical -> physical) and content scale.
-		GLFWwindow* win = (GLFWwindow*)windowHandle;
+		GLFWwindow* win = (GLFWwindow*)context.WindowHandle;
 		int logicalW = 0, logicalH = 0;
 		glfwGetWindowSize(win, &logicalW, &logicalH);
 		ctx->MouseScale = { logicalW > 0 ? (float)w / logicalW : 1.0f,
@@ -65,22 +70,36 @@ void UIApplication::Init(FontCache* fontCache)
 		ctx->ContentScale = csx;
 
 		auto batched = BatchDrawList(ctx->DrawList);
-		if (batched.Vertices.empty()) return;
+		if (!batched.Vertices.empty())
+		{
+			batched.DpiScale = 1.0f; // physical coords, no DPI scaling needed
 
-		batched.DpiScale = 1.0f; // physical coords, no DPI scaling needed
+			glm::mat4 ortho = glm::ortho(0.0f, (float)w, 0.0f, (float)h, -1.0f, 1.0f);
 
-		glm::mat4 ortho = glm::ortho(0.0f, (float)w, 0.0f, (float)h, -1.0f, 1.0f);
+			app.m_Renderer->SetWindowCommandBuffer(*ctx->RenderState, context.CommandBuffer);
+			app.m_Renderer->SetWindowViewport(*ctx->RenderState, w, h);
+			app.m_Renderer->RenderBatches(batched, ortho, *ctx->RenderState);
+		}
 
-		app.m_Renderer->SetWindowCommandBuffer(*ctx->RenderState, cb);
-		app.m_Renderer->SetWindowViewport(*ctx->RenderState, w, h);
-		app.m_Renderer->RenderBatches(batched, ortho, *ctx->RenderState);
+		// Debug-draw SCREEN sub-batch: build + submit this window's screen
+		// primitives (focus overlay, reflector highlights) - recorded by
+		// the engine after ALL UI.
+		{
+			static std::vector<TinyEngine::DebugDrawVertex> screenVerts;
+			screenVerts.clear();
+			debug_draw::BuildScreen({ (float)logicalW, (float)logicalH }, screenVerts);
+			TinyEngine::DebugDrawVertices geometry;
+			geometry.Vertices = screenVerts.data();
+			geometry.VertexCount = static_cast<uint32_t>(screenVerts.size());
+			TinyEngine::RendererDebug::SubmitDebugScreenOverlay(geometry, { (float)logicalW, (float)logicalH });
+		}
 	});
 }
 
 void UIApplication::Shutdown()
 {
 	if (!s_Instance) return;
-	TinyEngine::SetVulkanWispDrawCallback(nullptr);
+	TinyEngine::SetWispDrawCallback(nullptr);
 
 	// Per-window render state and roots must die before the renderer (they
 	// hold device resources), and the renderer before device shutdown.
@@ -140,6 +159,8 @@ bool UIApplication::DestroyWindowContext(void* window)
 		// Clear anything the input system still references for this window
 		// before its widgets die (same discipline as chrome rebuilds).
 		ResetTransientInputState(ctx);
+		ClearFocusIfInside(ctx->Root.get());
+		ClearFocusIfInside(ctx->PopupRoot.get());
 		if (m_DragContext == ctx)
 		{
 			// A drag cannot survive its source window closing - cancel it.
@@ -219,9 +240,9 @@ uint64_t UIApplication::CreateTexture(uint32_t width, uint32_t height, const uin
 	return m_Renderer ? m_Renderer->CreateTexture(width, height, rgbaData) : 0;
 }
 
-uint64_t UIApplication::WrapNativeImage(void* nativeImage, uint32_t width, uint32_t height)
+uint64_t UIApplication::WrapUIImageHandle(const TinyEngine::UIImageHandle& handle)
 {
-	return m_Renderer ? m_Renderer->WrapNativeImage(nativeImage, width, height) : 0;
+	return m_Renderer ? m_Renderer->WrapUIImageHandle(handle) : 0;
 }
 
 void UIApplication::UpdateTexture(uint64_t handle, uint32_t x, uint32_t y, uint32_t width, uint32_t height, const uint8_t* rgbaData)
@@ -293,6 +314,7 @@ void UIApplication::SetRootWidget(std::unique_ptr<Widget> root)
 	// The old root (and every widget in it) dies with this call - drop
 	// every input reference into it first, or the next frame's hover diff
 	// walks freed widgets.
+	ClearFocusIfInside(ctx->Root.get());
 	ctx->Root.reset();
 	ResetTransientInputState(ctx);
 	ctx->HoverPath.clear();
@@ -374,6 +396,13 @@ void UIApplication::DismissPopups(WindowContext* ctx)
 	// and a same-frame mouse-up after a click-dismiss iterates it.
 	ctx->LastHoverPath.clear();
 	ctx->HoverPath.clear();
+	// A drag in flight may hold a hit path into the popup tree - drop it
+	// or the next RouteDrag diffs against freed widgets.
+	if (m_DragOp)
+	{
+		m_DragOp->CurrentPath.clear();
+		m_DragOp->CurrentTarget = nullptr;
+	}
 	for (int i = 0; i < popupLayers; i++)
 		PopFocusLayer();
 }
@@ -503,6 +532,7 @@ bool UIApplication::OnMouseButtonDown(int button) { return OnMouseButtonDown(nul
 bool UIApplication::OnMouseButtonUp(int button)   { return OnMouseButtonUp(nullptr, button); }
 void UIApplication::OnMouseWheel(float delta)      { OnMouseWheel(nullptr, delta); }
 bool UIApplication::OnKeyDown(int key, int mods)   { return OnKeyDown(nullptr, key, mods); }
+bool UIApplication::OnKeyUp(int key, int mods)     { return OnKeyUp(nullptr, key, mods); }
 bool UIApplication::OnTextInput(uint32_t cp)       { return OnTextInput(nullptr, cp); }
 
 bool UIApplication::OnMouseButtonDown(void* window, int button)
@@ -511,6 +541,18 @@ bool UIApplication::OnMouseButtonDown(void* window, int button)
 	WindowContext* ctx = window ? GetWindowContext(window) : GetFocusedContext();
 	if (!ctx) return false;
 	ctx->MouseButtonDown[button] = true;
+
+	// Screen pick (position-independent capture, e.g. the eyedropper):
+	// consumes the click and fires, popups and all. Runs before the
+	// widget-pick / popup-dismiss paths so an open popup neither eats the
+	// click nor closes.
+	if (m_ScreenPickCallback)
+	{
+		auto cb = std::move(m_ScreenPickCallback);
+		m_ScreenPickCallback = nullptr;
+		cb();
+		return true;
+	}
 
 	// Widget picking: consume the click and report the picked widget. The
 	// candidate is THIS window's (the click lands wherever the cursor is,
@@ -656,7 +698,6 @@ bool UIApplication::OnKeyDown(void* window, int key, int mods)
 {
 	WindowContext* ctx = window ? GetWindowContext(window) : GetFocusedContext();
 	if (!ctx) return false;
-
 	// Escape cancels an active drag (payload restores its snapshot)
 	if (key == 256 && m_DragOp)
 	{
@@ -755,6 +796,24 @@ bool UIApplication::OnKeyDown(void* window, int key, int mods)
 	for (auto it = ctx->HoverPath.rbegin(); it != ctx->HoverPath.rend(); ++it)
 	{
 		Reply reply = (*it)->OnKeyDown(key, mods);
+		if (reply.Handled) return true;
+	}
+	return false;
+}
+
+bool UIApplication::OnKeyUp(void* window, int key, int mods)
+{
+	WindowContext* ctx = window ? GetWindowContext(window) : GetFocusedContext();
+	if (!ctx) return false;
+
+	if (m_FocusWidget)
+	{
+		Reply reply = m_FocusWidget->OnKeyUp(key, mods);
+		if (reply.Handled) return true;
+	}
+	for (auto it = ctx->HoverPath.rbegin(); it != ctx->HoverPath.rend(); ++it)
+	{
+		Reply reply = (*it)->OnKeyUp(key, mods);
 		if (reply.Handled) return true;
 	}
 	return false;
@@ -941,12 +1000,30 @@ void UIApplication::RouteDrag(const glm::vec2& pos)
 	{
 		Geometry rootGeom;
 		rootGeom.LocalSize = { (float)targetCtx->ViewportW, (float)targetCtx->ViewportH };
-		ArrangedChildren arranged;
-		targetCtx->Root->ArrangeChildren(rootGeom, arranged);
-		for (int i = (int)arranged.Size() - 1; i >= 0; --i)
+		// Popups render (and receive input) ABOVE the main tree - hit-test
+		// them first so drag targets inside a popup (the colour picker's
+		// saved-colours bar) resolve. Without this, a drag that starts in
+		// a popup and stays over it finds no target and the drop never
+		// fires.
+		if (targetCtx->PopupRoot && targetCtx->PopupContentCount > 0)
 		{
-			CollectHitPath(*targetCtx, arranged[i].WidgetPtr, arranged[i].Geom, targetLocal, newPath);
-			if (!newPath.empty()) break;
+			ArrangedChildren popArranged;
+			targetCtx->PopupRoot->ArrangeChildren(rootGeom, popArranged);
+			for (int i = (int)popArranged.Size() - 1; i >= 0; --i)
+			{
+				CollectHitPath(*targetCtx, popArranged[i].WidgetPtr, popArranged[i].Geom, targetLocal, newPath);
+				if (!newPath.empty()) break;
+			}
+		}
+		if (newPath.empty())
+		{
+			ArrangedChildren arranged;
+			targetCtx->Root->ArrangeChildren(rootGeom, arranged);
+			for (int i = (int)arranged.Size() - 1; i >= 0; --i)
+			{
+				CollectHitPath(*targetCtx, arranged[i].WidgetPtr, arranged[i].Geom, targetLocal, newPath);
+				if (!newPath.empty()) break;
+			}
 		}
 	}
 
@@ -1253,17 +1330,21 @@ void UIApplication::Tick(WindowContext& ctx, uint32_t viewportWidth, uint32_t vi
 			}
 		}
 
-		// Focus debug overlay — paint after everything else
+		// Focus debug overlay — emitted through the debug_draw SCREEN batch
+		// (drawn after all UI; the focused widget sits at a higher layer).
 		if (s_FocusDebugOverlay)
 		{
 			for (auto& e : m_FocusRegistry)
 			{
 				glm::vec4 col = glm::vec4(0.3f, 0.5f, 0.8f, 0.4f);
+				int layer = 1;
 				if (e.widget == m_FocusWidget)
+				{
 					col = glm::vec4(0.2f, 0.9f, 0.3f, 0.6f);
+					layer = 2;
+				}
 
-				glm::vec2 s = e.max - e.min;
-				ctx.DrawList.AddBox(99900, e.min, s, col, -1);
+				debug_draw::DrawRect2D(e.min, e.max, col, { 1.0f, 0.0f, layer });
 			}
 		}
 	}
@@ -1283,10 +1364,7 @@ void UIApplication::Tick(WindowContext& ctx, uint32_t viewportWidth, uint32_t vi
 			{
 				glm::vec2 selMin = g.LocalToAbsolute({0,0});
 				glm::vec2 selSize = g.LocalSize;
-				ctx.DrawList.AddBox(99990, selMin, {selSize.x, 1}, m_HighlightColor, -1);
-				ctx.DrawList.AddBox(99990, {selMin.x, selMin.y + selSize.y - 1}, {selSize.x, 1}, m_HighlightColor, -1);
-				ctx.DrawList.AddBox(99990, selMin, {1, selSize.y}, m_HighlightColor, -1);
-				ctx.DrawList.AddBox(99990, {selMin.x + selSize.x - 1, selMin.y}, {1, selSize.y}, m_HighlightColor, -1);
+				debug_draw::DrawRectOutline2D(selMin, selMin + selSize, m_HighlightColor, { 2.0f, 0.0f, 3 });
 				return true;
 			}
 			ArrangedChildren ac;
@@ -1300,43 +1378,50 @@ void UIApplication::Tick(WindowContext& ctx, uint32_t viewportWidth, uint32_t vi
 	}
 
 	// Update cursor based on this window's hovered widget (GLFW cursors are
-	// per-window objects).
-	if (!ctx.HoverPath.empty())
-	{
-		CursorType desired = ctx.HoverPath.back()->GetCursor();
-		if (desired != ctx.CurrentCursor)
-		{
-			ctx.CurrentCursor = desired;
-			GLFWwindow* win = (GLFWwindow*)ctx.Window;
-			if (!win) return;
+	// per-window objects); the app-level override (eyedropper crosshair)
+	// wins while set.
+	RefreshCursor();
+}
 
-			if (ctx.CachedCursor)
-				glfwDestroyCursor((GLFWcursor*)ctx.CachedCursor);
+void UIApplication::ApplyCursor(WindowContext& ctx, CursorType desired)
+{
+	if (desired == ctx.CurrentCursor) return;
+	ctx.CurrentCursor = desired;
+	GLFWwindow* win = (GLFWwindow*)ctx.Window;
+	if (!win) return;
 
-			int shape = GLFW_ARROW_CURSOR;
-			switch (desired)
-			{
-			case CursorType::Default:       shape = GLFW_ARROW_CURSOR; break;
-			case CursorType::TextEditBeam:  shape = GLFW_IBEAM_CURSOR; break;
-			case CursorType::Hand:          shape = GLFW_HAND_CURSOR; break;
-			case CursorType::ResizeEW:      shape = GLFW_HRESIZE_CURSOR; break;
-			case CursorType::ResizeNS:      shape = GLFW_VRESIZE_CURSOR; break;
-			case CursorType::Crosshair:     shape = GLFW_CROSSHAIR_CURSOR; break;
-			}
-			ctx.CachedCursor = glfwCreateStandardCursor(shape);
-			glfwSetCursor(win, (GLFWcursor*)ctx.CachedCursor);
-		}
-	}
-	else if (ctx.CurrentCursor != CursorType::Default)
+	if (ctx.CachedCursor)
+		glfwDestroyCursor((GLFWcursor*)ctx.CachedCursor);
+	ctx.CachedCursor = nullptr;
+
+	if (desired == CursorType::Default)
 	{
-		ctx.CurrentCursor = CursorType::Default;
-		GLFWwindow* win = (GLFWwindow*)ctx.Window;
-		if (win)
-		{
-			if (ctx.CachedCursor) { glfwDestroyCursor((GLFWcursor*)ctx.CachedCursor); ctx.CachedCursor = nullptr; }
-			glfwSetCursor(win, nullptr);
-		}
+		glfwSetCursor(win, nullptr);
+		return;
 	}
+
+	int shape = GLFW_ARROW_CURSOR;
+	switch (desired)
+	{
+	case CursorType::Default:       shape = GLFW_ARROW_CURSOR; break;
+	case CursorType::TextEditBeam:  shape = GLFW_IBEAM_CURSOR; break;
+	case CursorType::Hand:          shape = GLFW_HAND_CURSOR; break;
+	case CursorType::ResizeEW:      shape = GLFW_HRESIZE_CURSOR; break;
+	case CursorType::ResizeNS:      shape = GLFW_VRESIZE_CURSOR; break;
+	case CursorType::Crosshair:     shape = GLFW_CROSSHAIR_CURSOR; break;
+	}
+	ctx.CachedCursor = glfwCreateStandardCursor(shape);
+	glfwSetCursor(win, (GLFWcursor*)ctx.CachedCursor);
+}
+
+void UIApplication::RefreshCursor()
+{
+	WindowContext* ctx = GetFocusedContext();
+	if (!ctx) return;
+	CursorType desired = (m_CursorOverride != CursorType::Default)
+		? m_CursorOverride
+		: (!ctx->HoverPath.empty() ? ctx->HoverPath.back()->GetCursor() : CursorType::Default);
+	ApplyCursor(*ctx, desired);
 }
 
 void UIApplication::SetFocus(Widget* widget)
@@ -1632,6 +1717,17 @@ void UIApplication::ResetTransientInputState(WindowContext* ctx)
 		m_DragOp->CurrentPath.clear();
 		m_DragOp->CurrentTarget = nullptr;
 	}
+}
+
+void UIApplication::ClearFocusIfInside(Widget* subtree)
+{
+	if (!m_FocusWidget || !subtree) return;
+	for (Widget* p = m_FocusWidget; p; p = p->GetParent())
+		if (p == subtree)
+		{
+			ClearFocus();
+			return;
+		}
 }
 
 void UIApplication::ClearInputReferencesTo(Widget* subtree)

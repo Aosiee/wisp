@@ -544,12 +544,12 @@ public:
 		pl.PaintGhost = [self, panel](DrawList& dl, int layer, const glm::vec2& cursor) {
 			glm::vec2 pos = cursor + glm::vec2(10.0f, 12.0f);
 			std::string name = self->m_State->DisplayNameOf(panel);
-			glm::vec2 size = { std::max(96.0f, dockpaint::MeasureWidth(self->m_FontCache, self->m_Font, name, 1.0f) + 16.0f), 30.0f };
+			glm::vec2 size = { std::max(96.0f, dockpaint::MeasureWidth(self->m_FontCache, self->m_Font, name, self->m_FontSize, 1.0f) + 16.0f), 30.0f };
 			dl.AddBox(layer, pos, size, { 0.16f, 0.22f, 0.34f, 0.9f }, -1);
 			dl.AddBox(layer, pos, { 2.0f, size.y }, { 0.9f, 0.6f, 0.2f, 1.0f }, -1);
 			float top, bottom;
-			dockpaint::MeasureInkBox(self->m_FontCache, self->m_Font, name, 1.0f, top, bottom);
-			dockpaint::PaintText(dl, self->m_FontCache, self->m_Font, layer + 1,
+			dockpaint::MeasureInkBox(self->m_FontCache, self->m_Font, name, self->m_FontSize, 1.0f, top, bottom);
+			dockpaint::PaintText(dl, self->m_FontCache, self->m_Font, self->m_FontSize, layer + 1,
 				{ pos.x + 8.0f, pos.y + (size.y - (bottom - top)) * 0.5f - top }, name,
 				{ 0.9f, 0.9f, 1.0f, 1.0f }, -1, 1.0f);
 		};
@@ -584,12 +584,12 @@ public:
 		pl.PaintGhost = [self, panel](DrawList& dl, int layer, const glm::vec2& cursor) {
 			glm::vec2 pos = cursor + glm::vec2(10.0f, 12.0f);
 			std::string name = self->m_State->DisplayNameOf(panel);
-			glm::vec2 size = { std::max(96.0f, dockpaint::MeasureWidth(self->m_FontCache, self->m_Font, name, 1.0f) + 16.0f), 30.0f };
+			glm::vec2 size = { std::max(96.0f, dockpaint::MeasureWidth(self->m_FontCache, self->m_Font, name, self->m_FontSize, 1.0f) + 16.0f), 30.0f };
 			dl.AddBox(layer, pos, size, { 0.16f, 0.22f, 0.34f, 0.9f }, -1);
 			dl.AddBox(layer, pos, { 2.0f, size.y }, { 0.3f, 0.55f, 0.9f, 1.0f }, -1);
 			float top, bottom;
-			dockpaint::MeasureInkBox(self->m_FontCache, self->m_Font, name, 1.0f, top, bottom);
-			dockpaint::PaintText(dl, self->m_FontCache, self->m_Font, layer + 1,
+			dockpaint::MeasureInkBox(self->m_FontCache, self->m_Font, name, self->m_FontSize, 1.0f, top, bottom);
+			dockpaint::PaintText(dl, self->m_FontCache, self->m_Font, self->m_FontSize, layer + 1,
 				{ pos.x + 8.0f, pos.y + (size.y - (bottom - top)) * 0.5f - top }, name,
 				{ 0.9f, 0.9f, 1.0f, 1.0f }, -1, 1.0f);
 		};
@@ -948,6 +948,12 @@ inline Reply TabWell::OnMouseButtonDown(const glm::vec2& absPos, int button)
 {
 	if (button == 0)
 	{
+		int scrollDir = HitTestScrollArrow(absPos);
+		if (scrollDir != 0)
+		{
+			m_ScrollX = std::clamp(m_ScrollX + scrollDir * 64.0f, 0.0f, m_MaxScrollX);
+			return Reply::Handled_();
+		}
 		int tab = HitTestTabs(absPos);
 		if (tab >= 0)
 		{

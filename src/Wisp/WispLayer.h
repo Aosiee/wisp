@@ -10,8 +10,8 @@
 namespace wisp {
 
 // WispLayer — bridges TinyEngine's event system into Wisp's input API.
-// Pushed as a regular layer (not overlay) so ImGui gets events first during
-// coexistence. When Wisp replaces ImGui, promote to overlay.
+// Pushed as a regular layer (not overlay); event routing is per-window.
+// Wisp is the sole UI layer now.
 //
 // Multi-window: every event carries the GLFWwindow* it originated in
 // (stamped by the windowing layer), so each event routes to that window's
@@ -20,7 +20,7 @@ namespace wisp {
 // text/wheel route per window; window focus in/out drives the focused
 // context and its panel-layer recall.
 //
-// Wisp does NOT use SetBlockEvents like ImGui does — instead, it marks events
+// Wisp does NOT use a block-events flag — instead, it marks events
 // as handled when a Wisp widget consumed them (e.g., button click, scrollbar drag).
 
 class WispLayer : public TinyEngine::Layer

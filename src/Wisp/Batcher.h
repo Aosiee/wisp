@@ -276,6 +276,28 @@ inline BatchedDrawData BatchDrawList(const DrawList& drawList)
 				(uint8_t)(el.GradientColorBL.r*255), (uint8_t)(el.GradientColorBL.g*255), (uint8_t)(el.GradientColorBL.b*255), (uint8_t)(el.GradientColorBL.a*255));
 			break;
 		}
+		case DrawElementKind::Triangle:
+		{
+			// Emitted as a quad whose fourth vertex repeats the third
+			// (degenerate second triangle) - the surviving triangle
+			// interpolates the three vertex colours linearly, which is
+			// exactly the classic hue/white/black picker triangle.
+			uint32_t baseVertex = (uint32_t)output.Vertices.size();
+			BatchedVertex v[4];
+			auto c = [](const glm::vec4& col, int ch) -> uint8_t { return (uint8_t)(col[ch] * 255.0f); };
+			MakeVertex(v[0], el.TriP[0].x, el.TriP[0].y, 0.0f, 0.0f, c(el.TriC[0],0), c(el.TriC[0],1), c(el.TriC[0],2), c(el.TriC[0],3));
+			MakeVertex(v[1], el.TriP[1].x, el.TriP[1].y, 1.0f, 0.0f, c(el.TriC[1],0), c(el.TriC[1],1), c(el.TriC[1],2), c(el.TriC[1],3));
+			MakeVertex(v[2], el.TriP[2].x, el.TriP[2].y, 1.0f, 1.0f, c(el.TriC[2],0), c(el.TriC[2],1), c(el.TriC[2],2), c(el.TriC[2],3));
+			MakeVertex(v[3], el.TriP[2].x, el.TriP[2].y, 1.0f, 1.0f, c(el.TriC[2],0), c(el.TriC[2],1), c(el.TriC[2],2), c(el.TriC[2],3));
+			output.Vertices.push_back(v[0]);
+			output.Vertices.push_back(v[1]);
+			output.Vertices.push_back(v[2]);
+			output.Vertices.push_back(v[3]);
+			uint32_t i6[6] = { baseVertex, baseVertex+1, baseVertex+2, baseVertex, baseVertex+2, baseVertex+3 };
+			for (int i = 0; i < 6; ++i) output.Indices.push_back(i6[i]);
+			currentBatch.IndexCount += 6;
+			break;
+		}
 		case DrawElementKind::Box:
 		case DrawElementKind::Image:
 		case DrawElementKind::Text:

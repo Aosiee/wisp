@@ -76,7 +76,7 @@ public:
 				latestMs, fps, m_Data->Series("draw_calls").Latest(), m_FrameCount);
 			auto ms = m_FontCache->MeasureText(m_Font, buf, m_FontSize * 0.65f);
 			float tx = pos.x + 4, ty = pos.y + h - ms.y - 2;
-			PaintText(drawList, nextLayer, {tx, ty}, buf, {0.7f,0.7f,0.75f,1}, args.InheritedClipIndex);
+			PaintText(drawList, nextLayer, {tx, ty}, buf, {0.7f,0.7f,0.75f,1}, args.InheritedClipIndex, m_FontSize * 0.65f);
 			nextLayer++;
 		}
 		return nextLayer;
@@ -86,7 +86,7 @@ public:
 
 private:
 	void PaintText(DrawList& dl, int layer, const glm::vec2& pos, const std::string& text,
-		const glm::vec4& tint, int clip) const
+		const glm::vec4& tint, int clip, float pixelSize) const
 	{
 		if (!m_FontCache || text.empty()) return;
 		float px = pos.x, py = pos.y;
@@ -99,7 +99,7 @@ private:
 			else if((*p&0xE0)==0xC0&&p+1<e){cp=((*p&0x1F)<<6)|(p[1]&0x3F);p+=2;}
 			else if((*p&0xF0)==0xE0&&p+2<e){cp=((*p&0x0F)<<12)|((p[1]&0x3F)<<6)|(p[2]&0x3F);p+=3;}
 			else{p++;continue;}
-			const GlyphInfo* gi = m_FontCache->GetGlyph(m_Font, cp);
+			const GlyphInfo* gi = m_FontCache->GetGlyph(m_Font, cp, pixelSize);
 			if(gi)
 			{
 				glm::vec2 uv[4]={{gi->AtlasU0,gi->AtlasV0},{gi->AtlasU1,gi->AtlasV0},{gi->AtlasU1,gi->AtlasV1},{gi->AtlasU0,gi->AtlasV1}};

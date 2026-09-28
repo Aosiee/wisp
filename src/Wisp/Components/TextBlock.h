@@ -67,12 +67,12 @@ public:
 
 			if (cp == '\n') { penX = std::floor(geom.LocalToAbsolute({0,0}).x); penY += metrics.LineHeight; prevCp = 0; lastSpaceP = nullptr; continue; }
 
-			const GlyphInfo* gi = m_FontCache->GetGlyph(m_Font, cp);
+			const GlyphInfo* gi = m_FontCache->GetGlyph(m_Font, cp, m_FontSize);
 			if (!gi) continue;
 
 			float advance = gi->AdvanceX;
 			if (prevCp)
-				advance += m_FontCache->GetKerning(m_Font, prevCp, cp);
+				advance += m_FontCache->GetKerning(m_Font, prevCp, cp, m_FontSize);
 
 			// Check for wrap before placing this glyph
 			bool overflow = (effectiveWrap > 0.0f && penX + advance > absRight && penX > geom.LocalToAbsolute({0,0}).x);
@@ -119,10 +119,10 @@ public:
 						else if ((*look & 0xF0) == 0xE0 && look+2<end) { lcp = ((*look & 0x0F)<<12)|((look[1]&0x3F)<<6)|(look[2]&0x3F); look+=3; }
 						else break;
 						if (lcp == ' ' || lcp == '\n') break;
-						const GlyphInfo* lgi = m_FontCache->GetGlyph(m_Font, lcp);
+						const GlyphInfo* lgi = m_FontCache->GetGlyph(m_Font, lcp, m_FontSize);
 						float la = lgi ? lgi->AdvanceX : 0;
 						if (lookPrev != ' ')
-							la += m_FontCache->GetKerning(m_Font, lookPrev, lcp);
+							la += m_FontCache->GetKerning(m_Font, lookPrev, lcp, m_FontSize);
 						wordWidth += std::round(la);
 						lookPrev = lcp;
 					}

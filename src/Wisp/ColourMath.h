@@ -53,6 +53,34 @@ inline glm::vec3 HsvToRgb(const glm::vec3& hsv)
 	}
 }
 
+// ---- CMYK (0..1 per component) ---------------------------------------------
+
+inline glm::vec4 RgbToCmyk(const glm::vec3& rgb)
+{
+	float k = 1.0f - std::max(rgb.r, std::max(rgb.g, rgb.b));
+	if (k >= 1.0f - 1e-6f) return { 0.0f, 0.0f, 0.0f, 1.0f };
+	float inv = 1.0f / (1.0f - k);
+	return {
+		(1.0f - rgb.r - k) * inv,
+		(1.0f - rgb.g - k) * inv,
+		(1.0f - rgb.b - k) * inv,
+		k
+	};
+}
+
+inline glm::vec3 CmykToRgb(const glm::vec4& cmyk)
+{
+	float c = glm::clamp(cmyk.x, 0.0f, 1.0f);
+	float m = glm::clamp(cmyk.y, 0.0f, 1.0f);
+	float y = glm::clamp(cmyk.z, 0.0f, 1.0f);
+	float k = glm::clamp(cmyk.w, 0.0f, 1.0f);
+	return {
+		(1.0f - c) * (1.0f - k),
+		(1.0f - m) * (1.0f - k),
+		(1.0f - y) * (1.0f - k)
+	};
+}
+
 // ---- Hex strings ------------------------------------------------------------
 
 // 6-digit #RRGGBB (alpha is handled by its own bar).

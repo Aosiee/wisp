@@ -99,9 +99,9 @@ public:
 
 		// Title text
 		float inkTop, inkBottom;
-		dockpaint::MeasureInkBox(m_FontCache, m_Font, m_Title, 1.0f, inkTop, inkBottom);
+		dockpaint::MeasureInkBox(m_FontCache, m_Font, m_Title, m_FontSize, 1.0f, inkTop, inkBottom);
 		float ly = absPos.y + (th - (inkBottom - inkTop)) * 0.5f - inkTop;
-		dockpaint::PaintText(drawList, m_FontCache, m_Font, layerId + 2, { absPos.x + 8.0f, ly },
+		dockpaint::PaintText(drawList, m_FontCache, m_Font, m_FontSize, layerId + 2, { absPos.x + 8.0f, ly },
 			m_Title, m_Style.FloatingTitleTint, clip, 1.0f);
 
 		// Close button

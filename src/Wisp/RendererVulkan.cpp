@@ -816,31 +816,42 @@ void RendererVulkan::DestroyTexture(uint64_t handle)
 	impl.Textures.erase(it);
 }
 
-// Wrap an existing GPU image
-// (e.g. an offscreen render target's colour attachment, already resting in
-// SHADER_READ_ONLY_OPTIMAL) as a Wisp-samplable texture. The image is NOT
-// owned - DestroyTexture frees only this wrapper's view/descriptor set,
-// never the image itself.
-uint64_t RendererVulkan::WrapNativeImage(void* nativeImage, uint32_t width, uint32_t height)
+// Wrap an engine-acquired UIImageHandle (an offscreen render target's
+// colour attachment or a loaded texture's image, both resting in
+// SHADER_READ_ONLY_OPTIMAL when Wisp samples them) as a Wisp-samplable
+// texture. The image is NOT owned - DestroyTexture frees only this
+// wrapper's view/descriptor set, never the image itself. The image view's
+// format comes from the handle, so BGRA8 framebuffer attachments and RGBA8
+// textures each get the correct format (the pre-handle hook hardcoded
+// BGRA8).
+uint64_t RendererVulkan::WrapUIImageHandle(const TinyEngine::UIImageHandle& handle)
 {
 	WispVulkanImpl& impl = *m_Impl;
-	VkImage image = (VkImage)nativeImage;
-	if (!impl.Device || !image || width == 0 || height == 0)
+	VkImage image = (VkImage)handle.NativeImage;
+	if (!impl.Device || !image || handle.Width == 0 || handle.Height == 0)
 		return 0;
+
+	VkFormat format = VK_FORMAT_UNDEFINED;
+	switch (handle.Format)
+	{
+		case TinyEngine::UIImageHandleFormat::BGRA8: format = VK_FORMAT_B8G8R8A8_UNORM; break;
+		case TinyEngine::UIImageHandleFormat::RGBA8: format = VK_FORMAT_R8G8B8A8_UNORM; break;
+		default: return 0;
+	}
 
 	VulkanDevice& device = *impl.Device;
 
 	WispVulkanImpl::WispTexture tex;
 	tex.Image = image;
-	tex.Width = width;
-	tex.Height = height;
+	tex.Width = handle.Width;
+	tex.Height = handle.Height;
 	tex.OwnsImage = false;
 
 	VkImageViewCreateInfo vci{};
 	vci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	vci.image = image;
 	vci.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	vci.format = VK_FORMAT_B8G8R8A8_UNORM;
+	vci.format = format;
 	vci.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 	VK_CHECK(vkCreateImageView(device.GetDevice(), &vci, nullptr, &tex.View));
 

@@ -9,7 +9,7 @@ namespace wisp { namespace dockpaint {
 
 // Shared text helpers for dock widgets (same conventions as WidgetReflector).
 
-inline void PaintText(DrawList& dl, FontCache* fc, FontHandle font, int layer, const glm::vec2& pos,
+inline void PaintText(DrawList& dl, FontCache* fc, FontHandle font, float pixelSize, int layer, const glm::vec2& pos,
 	const std::string& text, const glm::vec4& tint, int clip, float scale = 1.0f)
 {
 	if (!fc || text.empty()) return;
@@ -23,7 +23,7 @@ inline void PaintText(DrawList& dl, FontCache* fc, FontHandle font, int layer, c
 		else if ((*p & 0xE0) == 0xC0 && p + 1 < e) { cp = ((*p & 0x1F) << 6) | (p[1] & 0x3F); p += 2; }
 		else if ((*p & 0xF0) == 0xE0 && p + 2 < e) { cp = ((*p & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F); p += 3; }
 		else { p++; continue; }
-		const GlyphInfo* gi = fc->GetGlyph(font, cp);
+		const GlyphInfo* gi = fc->GetGlyph(font, cp, pixelSize);
 		if (gi)
 		{
 			glm::vec2 uv[4] = { {gi->AtlasU0, gi->AtlasV0}, {gi->AtlasU1, gi->AtlasV0}, {gi->AtlasU1, gi->AtlasV1}, {gi->AtlasU0, gi->AtlasV1} };
@@ -34,7 +34,7 @@ inline void PaintText(DrawList& dl, FontCache* fc, FontHandle font, int layer, c
 	}
 }
 
-inline void MeasureInkBox(FontCache* fc, FontHandle font, const std::string& text, float scale,
+inline void MeasureInkBox(FontCache* fc, FontHandle font, const std::string& text, float pixelSize, float scale,
 	float& outTop, float& outBottom)
 {
 	outTop = 0.0f;
@@ -50,7 +50,7 @@ inline void MeasureInkBox(FontCache* fc, FontHandle font, const std::string& tex
 		else if ((*p & 0xE0) == 0xC0 && p + 1 < e) { cp = ((*p & 0x1F) << 6) | (p[1] & 0x3F); p += 2; }
 		else if ((*p & 0xF0) == 0xE0 && p + 2 < e) { cp = ((*p & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F); p += 3; }
 		else { p++; continue; }
-		const GlyphInfo* gi = fc->GetGlyph(font, cp);
+		const GlyphInfo* gi = fc->GetGlyph(font, cp, pixelSize);
 		if (!gi) continue;
 		float top = gi->BearingY * scale;
 		float bottom = (gi->BearingY + gi->Height) * scale;
@@ -59,8 +59,8 @@ inline void MeasureInkBox(FontCache* fc, FontHandle font, const std::string& tex
 	}
 }
 
-// Rough width of a string at the given scale (advance sum).
-inline float MeasureWidth(FontCache* fc, FontHandle font, const std::string& text, float scale = 1.0f)
+// Rough width of a string at the given size (advance sum).
+inline float MeasureWidth(FontCache* fc, FontHandle font, const std::string& text, float pixelSize, float scale = 1.0f)
 {
 	if (!fc || text.empty()) return 0.0f;
 	float w = 0.0f;
@@ -73,7 +73,7 @@ inline float MeasureWidth(FontCache* fc, FontHandle font, const std::string& tex
 		else if ((*p & 0xE0) == 0xC0 && p + 1 < e) { cp = ((*p & 0x1F) << 6) | (p[1] & 0x3F); p += 2; }
 		else if ((*p & 0xF0) == 0xE0 && p + 2 < e) { cp = ((*p & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F); p += 3; }
 		else { p++; continue; }
-		const GlyphInfo* gi = fc->GetGlyph(font, cp);
+		const GlyphInfo* gi = fc->GetGlyph(font, cp, pixelSize);
 		if (gi) w += gi->AdvanceX * scale;
 	}
 	return w;

@@ -31,7 +31,6 @@ public:
 		SetSupportsFocus(true);
 		m_EditText = std::make_unique<EditableText>(fc, font, fontSize);
 		SetupParentChild(this, m_EditText.get());
-		m_EditText->SetSupportsFocus(false);
 		m_EditText->SetOnTextChanged([this](const std::string& txt) {
 			m_EditTextDirty = true;
 		});
@@ -94,13 +93,24 @@ public:
 	void SetIndicatorLabel(const std::string& label) { m_IndicatorLabel = label; }
 	void ClearColourIndicator() { m_HasIndicator = false; }
 
+	// Overrides the minimum width (default 100 - the historical floor).
+	// Content-sized hosts lower it so the box hugs its text; localization-
+	// safe sizing.
+	void SetMinimumWidth(float minWidth)
+	{
+		m_MinimumWidth = minWidth;
+		if (m_EditText)
+			m_EditText->SetMinimumWidth(minWidth);
+		InvalidateLayout();
+	}
+
 	glm::vec2 ComputeDesiredSize() const override
 	{
 		float btnW = m_ShowButtons ? 48.0f : 0.0f;
 		float editW = m_EditText->ComputeDesiredSize().x;
 		float h = std::max(m_EditText->ComputeDesiredSize().y, 24.0f);
 		float indictW = m_HasIndicator ? h : 0.0f;
-		return { std::max(editW + btnW + indictW + 8.0f, 100.0f), h };
+		return { std::max(editW + btnW + indictW + 8.0f, m_MinimumWidth), h };
 	}
 
 	void ArrangeChildren(const Geometry& geom, ArrangedChildren& out) const override
@@ -162,12 +172,15 @@ public:
 				{
 					uint32_t cp;
 					if((*p&0x80)==0){cp=*p;p++;}else if((*p&0xE0)==0xC0&&p+1<e){cp=((*p&0x1F)<<6)|(p[1]&0x3F);p+=2;}else if((*p&0xF0)==0xE0&&p+2<e){cp=((*p&0x0F)<<12)|((p[1]&0x3F)<<6)|(p[2]&0x3F);p+=3;}else{p++;continue;}
-					const GlyphInfo* g = m_FontCache->GetGlyph(m_Font, cp);
+					const GlyphInfo* g = m_FontCache->GetGlyph(m_Font, cp, m_FontSize * 0.7f);
 					if(g)
 					{
 						glm::vec2 uv[4]={{g->AtlasU0,g->AtlasV0},{g->AtlasU1,g->AtlasV0},{g->AtlasU1,g->AtlasV1},{g->AtlasU0,g->AtlasV1}};
-						drawList.AddText(layerId + 3, {lx + g->BearingX, ly + fm.Ascent + g->BearingY},
-							std::string(1,(char)cp), uv, g->AdvanceX, g->Height, glm::vec4(1,1,1,1), clipIdx);
+						// Outlined so the letter stays legible over any
+						// channel-tinted indicator swatch.
+						drawList.AddTextOutlined(layerId + 3, {lx + g->BearingX, ly + fm.Ascent + g->BearingY},
+							std::string(1,(char)cp), uv, g->AdvanceX, g->Height, glm::vec4(1,1,1,1),
+							glm::vec4(0.0f,0.0f,0.0f,0.9f), 1.0f, clipIdx);
 						lx += g->AdvanceX;
 					}
 				}
@@ -326,6 +339,7 @@ private:
 	T          m_MinValue{}, m_MaxValue{};
 	bool       m_HasMin = false, m_HasMax = false;
 	bool       m_ShowButtons = true;
+	float      m_MinimumWidth = 100.0f;
 	bool       m_EnableExpressionEval = true;
 	mutable bool m_EditTextDirty = false;
 	mutable bool m_IsError = false;
@@ -355,7 +369,6 @@ public:
 		SetSupportsFocus(true);
 		m_EditText = std::make_unique<EditableText>(fc, font, fontSize);
 		SetupParentChild(this, m_EditText.get());
-		m_EditText->SetSupportsFocus(false);
 		m_EditText->SetOnTextChanged([this](const std::string&) { m_EditTextDirty = true; });
 		SetValue(std::move(initialValue));
 	}

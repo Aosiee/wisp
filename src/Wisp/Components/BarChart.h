@@ -65,13 +65,13 @@ public:
 				auto ms = m_FontCache->MeasureText(m_Font, buf, m_FontSize * 0.6f);
 				float lx = bx + barW*0.5f - ms.x*0.5f;
 				float ly = by - ms.y - 2;
-				PaintText(drawList, layerId+2, {lx, ly}, buf, {0.8f,0.8f,0.85f,1}, clip);
+				PaintText(drawList, layerId+2, {lx, ly}, buf, {0.8f,0.8f,0.85f,1}, clip, m_FontSize * 0.6f);
 
 				// Label below
 				auto lm = m_FontCache->MeasureText(m_Font, m_Bars[i].Label, m_FontSize * 0.55f);
 				float llx = bx + barW*0.5f - lm.x*0.5f;
 				float lly = gy + gh + 4;
-				PaintText(drawList, layerId+2, {llx, lly}, m_Bars[i].Label, {0.5f,0.5f,0.6f,1}, clip);
+				PaintText(drawList, layerId+2, {llx, lly}, m_Bars[i].Label, {0.5f,0.5f,0.6f,1}, clip, m_FontSize * 0.55f);
 			}
 		}
 
@@ -80,7 +80,7 @@ public:
 
 private:
 	void PaintText(DrawList& dl, int layer, const glm::vec2& pos, const std::string& text,
-		const glm::vec4& tint, int clip) const
+		const glm::vec4& tint, int clip, float pixelSize) const
 	{
 		if (!m_FontCache || text.empty()) return;
 		float px = pos.x, py = pos.y;
@@ -93,7 +93,7 @@ private:
 			else if((*p&0xE0)==0xC0&&p+1<e){cp=((*p&0x1F)<<6)|(p[1]&0x3F);p+=2;}
 			else if((*p&0xF0)==0xE0&&p+2<e){cp=((*p&0x0F)<<12)|((p[1]&0x3F)<<6)|(p[2]&0x3F);p+=3;}
 			else{p++;continue;}
-			const GlyphInfo* gi = m_FontCache->GetGlyph(m_Font, cp);
+			const GlyphInfo* gi = m_FontCache->GetGlyph(m_Font, cp, pixelSize);
 			if(gi)
 			{
 				glm::vec2 uv[4]={{gi->AtlasU0,gi->AtlasV0},{gi->AtlasU1,gi->AtlasV0},{gi->AtlasU1,gi->AtlasV1},{gi->AtlasU0,gi->AtlasV1}};

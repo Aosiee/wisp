@@ -38,39 +38,25 @@ FontCache::FontFace* FontCache::GetFace(FontHandle handle)
 	return &m_Faces[handle];
 }
 
-void FontCache::SetFontSize(FontHandle font, float pixelSize)
+const GlyphInfo* FontCache::GetGlyph(FontHandle font, uint32_t codepoint, float pixelSize)
 {
 	FontFace* face = GetFace(font);
-	if (!face) return;
+	if (!face || pixelSize <= 0.0f) return nullptr;
 
-	if (face->CurrentSizePx != pixelSize)
-	{
-		face->CurrentSizePx = pixelSize;
-		stbtt_fontinfo stbInfo;
-		if (stbtt_InitFont(&stbInfo, face->TtfData.data(), stbtt_GetFontOffsetForIndex(face->TtfData.data(), face->StbFontOffset)))
-			face->Scale = stbtt_ScaleForPixelHeight(&stbInfo, pixelSize);
-	}
-}
-
-const GlyphInfo* FontCache::GetGlyph(FontHandle font, uint32_t codepoint)
-{
-	FontFace* face = GetFace(font);
-	if (!face || face->CurrentSizePx <= 0.0f) return nullptr;
-
-	GlyphKey key{ font, codepoint, face->CurrentSizePx };
+	GlyphKey key{ font, codepoint, pixelSize };
 	auto it = m_GlyphCache.find(key);
 	if (it != m_GlyphCache.end())
 		return &it->second;
 
 	GlyphInfo info;
-	if (!RasterizeGlyph(font, codepoint, info))
+	if (!RasterizeGlyph(font, codepoint, pixelSize, info))
 		return nullptr;
 
 	auto result = m_GlyphCache.emplace(key, std::move(info));
 	return &result.first->second;
 }
 
-bool FontCache::RasterizeGlyph(FontHandle font, uint32_t codepoint, GlyphInfo& outInfo)
+bool FontCache::RasterizeGlyph(FontHandle font, uint32_t codepoint, float pixelSize, GlyphInfo& outInfo)
 {
 	FontFace* face = GetFace(font);
 	if (!face) return false;
@@ -79,19 +65,14 @@ bool FontCache::RasterizeGlyph(FontHandle font, uint32_t codepoint, GlyphInfo& o
 	if (!stbtt_InitFont(&stbInfo, face->TtfData.data(), stbtt_GetFontOffsetForIndex(face->TtfData.data(), face->StbFontOffset)))
 		return false;
 
-	// Apply pixel size if not already set
-	if (face->Scale <= 0.0f)
-	{
-		face->Scale = stbtt_ScaleForPixelHeight(&stbInfo, 16.0f);
-		face->CurrentSizePx = 16.0f;
-	}
-
-	float scale = face->Scale;
+	// The size is per-call: every widget rasterizes at the size IT draws
+	// at, independent of whatever any other widget last measured.
+	float scale = stbtt_ScaleForPixelHeight(&stbInfo, pixelSize);
 
 	int advanceWidth, leftSideBearing;
 	stbtt_GetCodepointHMetrics(&stbInfo, codepoint, &advanceWidth, &leftSideBearing);
 
-	// Subpixel-prefilter for crisp rendering at integer positions (matching ImGui's approach)
+	// Subpixel-prefilter for crisp rendering at integer positions
 	int x0, y0, x1, y1;
 	stbtt_GetCodepointBitmapBoxSubpixel(&stbInfo, codepoint, scale, scale, 0.0f, 0.0f, &x0, &y0, &x1, &y1);
 
@@ -212,7 +193,7 @@ void FontCache::GrowAtlas()
 	m_GlyphCache.clear();
 }
 
-float FontCache::GetKerning(FontHandle font, uint32_t left, uint32_t right)
+float FontCache::GetKerning(FontHandle font, uint32_t left, uint32_t right, float pixelSize)
 {
 	FontFace* face = GetFace(font);
 	if (!face) return 0.0f;
@@ -221,7 +202,7 @@ float FontCache::GetKerning(FontHandle font, uint32_t left, uint32_t right)
 	if (!stbtt_InitFont(&stbInfo, face->TtfData.data(), stbtt_GetFontOffsetForIndex(face->TtfData.data(), face->StbFontOffset)))
 		return 0.0f;
 
-	return stbtt_GetCodepointKernAdvance(&stbInfo, left, right) * face->Scale;
+	return stbtt_GetCodepointKernAdvance(&stbInfo, left, right) * stbtt_ScaleForPixelHeight(&stbInfo, pixelSize);
 }
 
 glm::vec2 FontCache::MeasureText(FontHandle font, const std::string& text, float pixelSize, float wrapWidth, WrapMode wrapMode)
@@ -229,13 +210,11 @@ glm::vec2 FontCache::MeasureText(FontHandle font, const std::string& text, float
 	FontFace* face = GetFace(font);
 	if (!face) return { 0.0f, 0.0f };
 
-	SetFontSize(font, pixelSize);
-
 	stbtt_fontinfo stbInfo;
 	if (!stbtt_InitFont(&stbInfo, face->TtfData.data(), stbtt_GetFontOffsetForIndex(face->TtfData.data(), face->StbFontOffset)))
 		return { 0.0f, 0.0f };
 
-	float scale = face->Scale;
+	float scale = stbtt_ScaleForPixelHeight(&stbInfo, pixelSize);
 
 	int ascent, descent, lineGap;
 	stbtt_GetFontVMetrics(&stbInfo, &ascent, &descent, &lineGap);
@@ -332,15 +311,13 @@ FontMetrics FontCache::GetMetrics(FontHandle font, float pixelSize)
 	FontFace* face = GetFace(font);
 	if (!face) return m;
 
-	SetFontSize(font, pixelSize);
-
 	stbtt_fontinfo stbInfo;
 	if (!stbtt_InitFont(&stbInfo, face->TtfData.data(), stbtt_GetFontOffsetForIndex(face->TtfData.data(), face->StbFontOffset)))
 		return m;
 
 	int ascent, descent, lineGap;
 	stbtt_GetFontVMetrics(&stbInfo, &ascent, &descent, &lineGap);
-	float scale = face->Scale;
+	float scale = stbtt_ScaleForPixelHeight(&stbInfo, pixelSize);
 
 	m.Ascent  = ascent * scale;
 	m.Descent = descent * scale;
