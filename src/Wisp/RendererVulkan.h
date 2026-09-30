@@ -35,7 +35,7 @@ public:
 
 	// Per-window state plumbing: set which command buffer/viewport a
 	// window's state is being recorded into.
-	void SetWindowCommandBuffer(WispWindowRenderState& state, void* vkCommandBuffer);
+	void SetWindowCommandBuffer(WispWindowRenderState& state, void* commandBuffer);
 	void SetWindowViewport(WispWindowRenderState& state, uint32_t width, uint32_t height);
 
 	// IUIRenderer — legacy single-state path (renders into the internal
@@ -46,7 +46,7 @@ public:
 	void BeginFrame();
 
 	// Must be called before each RenderBatches() to provide the active command buffer.
-	void SetCommandBuffer(void* vkCommandBuffer);
+	void SetCommandBuffer(void* commandBuffer);
 
 	// Set viewport dimensions (should match swapchain extent).
 	void SetViewportSize(uint32_t width, uint32_t height);

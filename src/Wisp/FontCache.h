@@ -69,7 +69,7 @@ public:
 	bool     IsAtlasDirty()   const { return m_AtlasDirty; }
 	// The renderer must clear the dirty flag after rebuilding the GPU
 	// atlas, or every glyph rasterisation leaves it set forever and the
-	// atlas rebuilds (with a full vkDeviceWaitIdle) every single frame.
+	// atlas rebuilds (with a full device stall) every single frame.
 	void     ClearAtlasDirty() const { m_AtlasDirty = false; }
 
 	// Font metrics for the given size.

@@ -19,20 +19,10 @@
 #include "TinyEngine/Core/Log.h"
 #include "TinyEngine/Debug/Profiler.h"
 
-// Pulled in before GLFW gets included anywhere in a translation unit so GLFW
-// notices Vulkan's types are already visible and declares its own Vulkan helper
-// functions (glfwCreateWindowSurface, glfwGetRequiredInstanceExtensions, etc).
-//
-// We include the umbrella <vulkan/vulkan.h> ourselves first (with
-// VK_NO_PROTOTYPES so it declares types only, no function symbols to link
-// against) rather than let volk.h pull in just vulkan_core.h on its own.
-//
-// Volk is our vendored Vulkan meta-loader (third_party plugin), it loads
-// every Vulkan function dynamically at runtime instead of linking against the
-// Vulkan loader, see Platform/Vulkan/VulkanCommon.h.
-#define VK_NO_PROTOTYPES
-#include <vulkan/vulkan.h>
-#include <volk.h>
+// P-D: Wisp no longer touches the backend directly (the renderer goes
+// through the RHI; window/surface creation lives in the engine's window
+// layer) - the old Vulkan/volk umbrella include is gone, which also
+// satisfies the P-E "no backend identifiers outside Platform/Vulkan" rule.
 
 #ifdef TE_PLATFORM_LINUX
 	#include <csignal>              // Signal handling (SIGSEGV, SIGABRT) for crash logging
