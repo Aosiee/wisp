@@ -641,6 +641,12 @@ void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4&
 
 	const uint32_t atlasIndex = TinyEngine::rhi::IsValid(impl.Atlas) ? device.GetBindlessIndex(impl.Atlas) : 0;
 
+	// One outer GPU scope for the whole UI pass, plus a stable per-batch
+	// scope per pipeline so the GPU frame debugger (and RenderDoc/NSight)
+	// attribute the UI's GPU time to the pipeline that costs it - the
+	// rounded-box SDFs, the glyph atlas text, or the sampled images.
+	commandList->BeginLabel("Wisp UI");
+
 	for (const auto& batch : data.Batches)
 	{
 		if (batch.IndexCount == 0) continue;
@@ -656,6 +662,15 @@ void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4&
 		{
 			commandList->SetScissor(0, 0, state.ViewportW, state.ViewportH);
 		}
+
+		const char* batchLabel = "Wisp UI: Rect";
+		if (batch.TextureId == 2)
+			batchLabel = "Wisp UI: RoundedBox SDF";
+		else if (batch.TextureId == 1)
+			batchLabel = "Wisp UI: Text Atlas";
+		else if (batch.TextureId >= 3)
+			batchLabel = "Wisp UI: Image";
+		commandList->BeginLabel(batchLabel);
 
 		if (batch.TextureId == 0)
 		{
@@ -715,7 +730,11 @@ void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4&
 		commandList->BindVertexBuffer(staging.VB, 0);
 		commandList->BindIndexBuffer(staging.IB, 0);
 		commandList->DrawIndexed(batch.IndexCount, 1, batch.IndexOffset, 0, 0);
+
+		commandList->EndLabel();
 	}
+
+	commandList->EndLabel();
 }
 
 } // namespace wisp
