@@ -595,6 +595,31 @@ void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4&
 	RenderBatches(data, orthoProjection, *m_DefaultState);
 }
 
+void RendererVulkan::EnsureFrameResources(const BatchedDrawData& data, WispWindowRenderState& state)
+{
+	WispVulkanImpl& impl = *m_Impl;
+	if (!impl.Device)
+		return;
+
+	// Rebuild the atlas when dirty (glyphs rasterised during this frame's
+	// layout at extract time). Cleared AFTER the rebuild so freshly
+	// rasterised glyphs upload once; a glyph rasterised later re-dirties.
+	const FontCache* fc = impl.FontCachePtr;
+	if (fc && fc->IsAtlasDirty())
+	{
+		CreateAtlasTexture(impl);
+		if (impl.AtlasCreated)
+			fc->ClearAtlasDirty();
+	}
+
+	// Grow the staging buffers to cover this frame's batch data (the slot
+	// matches RenderBatches' pick - same frame, same CurrentFrameIndex).
+	StagingBuffers& staging = state.Staging[TinyEngine::Profiler::Get().CurrentFrameIndex() % 2];
+	uint32_t vbBytes = (uint32_t)(data.Vertices.size() * sizeof(BatchedVertex));
+	uint32_t ibBytes = (uint32_t)(data.Indices.size() * sizeof(uint32_t));
+	EnsureStagingBuffers(impl, staging, vbBytes, ibBytes);
+}
+
 void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4& orthoProjection, WispWindowRenderState& state)
 {
 	WispVulkanImpl& impl = *m_Impl;
@@ -603,21 +628,6 @@ void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4&
 
 	TinyEngine::rhi::Device& device = *impl.Device;
 
-	// Update atlas if dirty
-	const FontCache* fc = impl.FontCachePtr;
-	if (fc && fc->IsAtlasDirty())
-	{
-		CreateAtlasTexture(impl);
-		// Clear AFTER the rebuild so this frame's freshly rasterised
-		// glyphs are uploaded; a glyph rasterised later re-dirties for
-		// next frame. Without this the atlas rebuilt every frame. Only
-		// cleared when the rebuild actually produced an atlas (the guard
-		// in CreateAtlasTexture can skip it, and a missed rebuild must
-		// retry next frame, not be dropped).
-		if (impl.AtlasCreated)
-			fc->ClearAtlasDirty();
-	}
-
 	// Upload staging - per-frame-slot pair (see WispWindowRenderState):
 	// the slot this window is recording right now was fence-waited by
 	// AcquireNextImage, so overwriting it cannot race any in-flight GPU
@@ -625,10 +635,15 @@ void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4&
 	// each slot is safe to write when its turn comes around again).
 	// The per-window slot is the frame counter % 2 (the window-slot base
 	// in the old frame index was always even, so it contributed nothing).
+	// T-F-B.3: the buffers themselves were ensured by EnsureFrameResources
+	// on the extract side - recording never creates device objects.
 	StagingBuffers& staging = state.Staging[TinyEngine::Profiler::Get().CurrentFrameIndex() % 2];
 	uint32_t vbBytes = (uint32_t)(data.Vertices.size() * sizeof(BatchedVertex));
 	uint32_t ibBytes = (uint32_t)(data.Indices.size() * sizeof(uint32_t));
-	EnsureStagingBuffers(impl, staging, vbBytes, ibBytes);
+	TE_CORE_ASSERT(TinyEngine::rhi::IsValid(staging.VB) && staging.VBCapacity >= vbBytes,
+		"RenderBatches ran without EnsureFrameResources covering this frame's vertex batch!");
+	TE_CORE_ASSERT(TinyEngine::rhi::IsValid(staging.IB) && staging.IBCapacity >= ibBytes,
+		"RenderBatches ran without EnsureFrameResources covering this frame's index batch!");
 	if (vbBytes) device.SetBufferData(staging.VB, data.Vertices.data(), vbBytes);
 	if (ibBytes) device.SetBufferData(staging.IB, data.Indices.data(), ibBytes);
 

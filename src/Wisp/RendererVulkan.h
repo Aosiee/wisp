@@ -33,6 +33,13 @@ public:
 	// Render into a specific window's state.
 	void RenderBatches(const BatchedDrawData& data, const glm::mat4& orthoProjection, WispWindowRenderState& state);
 
+	// T-F-B.3: the extract-side preparation - called from the Wisp update
+	// (main thread) with the frame's batch data, it rebuilds the font atlas
+	// when dirty and grows the window's staging buffers to cover the data,
+	// so RenderBatches (which records on a Loom worker) never creates device
+	// objects.
+	void EnsureFrameResources(const BatchedDrawData& data, WispWindowRenderState& state);
+
 	// Per-window state plumbing: set which command buffer/viewport a
 	// window's state is being recorded into.
 	void SetWindowCommandBuffer(WispWindowRenderState& state, void* commandBuffer);

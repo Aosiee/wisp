@@ -36,11 +36,11 @@ void UIApplication::Init(FontCache* fontCache)
 	s_Instance->m_FocusedContext = ctx.get();
 	s_Instance->m_Contexts.push_back(std::move(ctx));
 
-	// Register draw callback — Wisp handles its own rendering, per window.
-	// The context is backend-neutral: the command buffer travels as an
-	// opaque handle into RendererVulkan (the backend), the window handle
-	// resolves the per-window context.
-	TinyEngine::SetWispDrawCallback([](const TinyEngine::RenderPassContext& context) {
+	// T-F-B.3: the update runs on the main thread at the top of
+	// SwapBuffers (tick + paint + batch build + staging/atlas
+	// pre-creation + the screen-overlay submit); the draw callback
+	// below then records only, on a Loom worker.
+	TinyEngine::SetWispUpdateCallback([](const TinyEngine::RenderPassContext& context) {
 		UIApplication& app = Get();
 
 		WindowContext* ctx = app.GetWindowContext(context.WindowHandle);
@@ -69,16 +69,11 @@ void UIApplication::Init(FontCache* fontCache)
 		glfwGetWindowContentScale(win, &csx, &csy);
 		ctx->ContentScale = csx;
 
-		auto batched = BatchDrawList(ctx->DrawList);
-		if (!batched.Vertices.empty())
+		ctx->LastBatches = BatchDrawList(ctx->DrawList);
+		if (!ctx->LastBatches.Vertices.empty())
 		{
-			batched.DpiScale = 1.0f; // physical coords, no DPI scaling needed
-
-			glm::mat4 ortho = glm::ortho(0.0f, (float)w, 0.0f, (float)h, -1.0f, 1.0f);
-
-			app.m_Renderer->SetWindowCommandBuffer(*ctx->RenderState, context.CommandBuffer);
-			app.m_Renderer->SetWindowViewport(*ctx->RenderState, w, h);
-			app.m_Renderer->RenderBatches(batched, ortho, *ctx->RenderState);
+			ctx->LastBatches.DpiScale = 1.0f; // physical coords, no DPI scaling needed
+			app.m_Renderer->EnsureFrameResources(ctx->LastBatches, *ctx->RenderState);
 		}
 
 		// Debug-draw SCREEN sub-batch: build + submit this window's screen
@@ -94,11 +89,37 @@ void UIApplication::Init(FontCache* fontCache)
 			TinyEngine::RendererDebug::SubmitDebugScreenOverlay(geometry, { (float)logicalW, (float)logicalH });
 		}
 	});
+
+	// Register draw callback — Wisp handles its own rendering, per window.
+	// The context is backend-neutral: the command buffer travels as an
+	// opaque handle into RendererVulkan (the backend), the window handle
+	// resolves the per-window context. Record-only: the update above owns
+	// the tick/paint.
+	TinyEngine::SetWispDrawCallback([](const TinyEngine::RenderPassContext& context) {
+		UIApplication& app = Get();
+
+		WindowContext* ctx = app.GetWindowContext(context.WindowHandle);
+		if (!ctx || !ctx->Root) return;
+
+		uint32_t w = context.Width;
+		uint32_t h = context.Height;
+
+		const BatchedDrawData& batched = ctx->LastBatches;
+		if (!batched.Vertices.empty())
+		{
+			glm::mat4 ortho = glm::ortho(0.0f, (float)w, 0.0f, (float)h, -1.0f, 1.0f);
+
+			app.m_Renderer->SetWindowCommandBuffer(*ctx->RenderState, context.CommandBuffer);
+			app.m_Renderer->SetWindowViewport(*ctx->RenderState, w, h);
+			app.m_Renderer->RenderBatches(batched, ortho, *ctx->RenderState);
+		}
+	});
 }
 
 void UIApplication::Shutdown()
 {
 	if (!s_Instance) return;
+	TinyEngine::SetWispUpdateCallback(nullptr);
 	TinyEngine::SetWispDrawCallback(nullptr);
 
 	// Per-window render state and roots must die before the renderer (they

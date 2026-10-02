@@ -34,6 +34,11 @@ struct WindowContext
 	::wisp::DrawList DrawList;
 	::wisp::ArrangedChildren ArrangedChildren;
 
+	// T-F-B.3: the update (extract, main thread) builds + stores the
+	// frame's batches; the draw callback (record, Loom worker) replays
+	// this stored copy - it never touches the widget tree.
+	BatchedDrawData LastBatches;
+
 	// Input / hover.
 	glm::vec2 MousePos{ -1, -1 };
 	glm::vec2 MouseScale{ 1, 1 };
