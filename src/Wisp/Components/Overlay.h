@@ -57,6 +57,11 @@ public:
 		for (size_t i = 0; i < m_Children.size(); ++i)
 		{
 			auto& c = m_Children[i];
+			// Collapsed children are arranged out of layout/hit-testing AND
+			// out of paint - an invisible overlay slot (the collapsed
+			// console) must not draw over the widgets beneath it.
+			if (!IsVisibleForPaint(c->GetVisibility()))
+				continue;
 			cs.ColorAndOpacity = style.ColorAndOpacity * c->GetRenderTint();
 			cs.ColorAndOpacity.a *= c->GetRenderOpacity();
 			nextLayer = c->OnPaint(childArgs, geom, drawList, nextLayer, cs);

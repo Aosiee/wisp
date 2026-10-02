@@ -334,6 +334,12 @@ public:
 	Visibility GetVisibility() const { return m_Visibility; }
 	void SetVisibility(Visibility v) { m_Visibility = v; InvalidateLayout(); }
 
+	// A widget whose geometry covers an area but captures input only over
+	// part of it (the console band over the dock): returning true for a
+	// point removes the widget from the hit/hover test at that point, so
+	// the widgets beneath it receive the input.
+	virtual bool IsHitTestExcluded(const glm::vec2& absPoint) const { return false; }
+
 	bool IsEnabled() const { return m_Enabled; }
 	void SetEnabled(bool e) { m_Enabled = e; }
 

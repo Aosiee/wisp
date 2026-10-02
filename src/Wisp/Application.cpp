@@ -844,6 +844,7 @@ bool UIApplication::OnTextInput(void* window, uint32_t codepoint)
 Widget* UIApplication::PickAbsoluteRecursive(WindowContext& ctx, Widget* w, const Geometry& geom, const glm::vec2& pt)
 {
 	if (!w) return nullptr;
+	if (w->IsHitTestExcluded(pt)) return nullptr;
 
 	// Deepest child first (back-to-front)
 	ArrangedChildren arranged;
@@ -1209,6 +1210,7 @@ bool UIApplication::HitTestRecursive(WindowContext& ctx, Widget* widget, const G
 {
 	if (!widget) return false;
 	if (!IsVisibleForHitTest(widget->GetVisibility())) return false;
+	if (widget->IsHitTestExcluded(absPoint)) return false;
 	if (!geom.IsUnderLocation(absPoint)) return false;
 
 	ArrangedChildren kids;
