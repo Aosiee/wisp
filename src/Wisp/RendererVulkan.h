@@ -30,20 +30,25 @@ public:
 	WispWindowRenderState* CreateWindowState();
 	void DestroyWindowState(WispWindowRenderState* state);
 
-	// Render into a specific window's state.
-	void RenderBatches(const BatchedDrawData& data, const glm::mat4& orthoProjection, WispWindowRenderState& state);
+	// Render into a specific window's state. frameIndex is the
+	// window-slot-encoded frame index the staging slot pick keys on (the
+	// update and the record must agree - it is passed explicitly, never
+	// stored on the shared state, so the pipelined update never races the
+	// record's pick).
+	void RenderBatches(const BatchedDrawData& data, const glm::mat4& orthoProjection, WispWindowRenderState& state, uint32_t frameIndex);
 
 	// T-F-B.3: the extract-side preparation - called from the Wisp update
 	// (main thread) with the frame's batch data, it rebuilds the font atlas
 	// when dirty and grows the window's staging buffers to cover the data,
 	// so RenderBatches (which records on a Loom worker) never creates device
 	// objects.
-	void EnsureFrameResources(const BatchedDrawData& data, WispWindowRenderState& state);
+	void EnsureFrameResources(const BatchedDrawData& data, WispWindowRenderState& state, uint32_t frameIndex);
 
 	// Per-window state plumbing: set which command buffer/viewport a
 	// window's state is being recorded into.
 	void SetWindowCommandBuffer(WispWindowRenderState& state, void* commandBuffer);
 	void SetWindowViewport(WispWindowRenderState& state, uint32_t width, uint32_t height);
+
 
 	// IUIRenderer — legacy single-state path (renders into the internal
 	// default state; SetCommandBuffer/SetViewportSize set it).

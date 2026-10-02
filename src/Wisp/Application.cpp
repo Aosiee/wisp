@@ -69,11 +69,15 @@ void UIApplication::Init(FontCache* fontCache)
 		glfwGetWindowContentScale(win, &csx, &csy);
 		ctx->ContentScale = csx;
 
-		ctx->LastBatches = BatchDrawList(ctx->DrawList);
-		if (!ctx->LastBatches.Vertices.empty())
+		BatchedDrawData& lastBatches = ctx->LastBatches[context.FrameIndex % 2];
+		lastBatches = BatchDrawList(ctx->DrawList);
+		if (!lastBatches.Vertices.empty())
 		{
-			ctx->LastBatches.DpiScale = 1.0f; // physical coords, no DPI scaling needed
-			app.m_Renderer->EnsureFrameResources(ctx->LastBatches, *ctx->RenderState);
+			lastBatches.DpiScale = 1.0f; // physical coords, no DPI scaling needed
+			// T-F-C: the staging slot pick keys on the frame index - the
+			// update (extract) and the record must agree (passed explicitly,
+			// never stored on the shared state).
+			app.m_Renderer->EnsureFrameResources(lastBatches, *ctx->RenderState, context.FrameIndex);
 		}
 
 		// Debug-draw SCREEN sub-batch: build + submit this window's screen
@@ -104,14 +108,16 @@ void UIApplication::Init(FontCache* fontCache)
 		uint32_t w = context.Width;
 		uint32_t h = context.Height;
 
-		const BatchedDrawData& batched = ctx->LastBatches;
+		const BatchedDrawData& batched = ctx->LastBatches[context.FrameIndex % 2];
 		if (!batched.Vertices.empty())
 		{
 			glm::mat4 ortho = glm::ortho(0.0f, (float)w, 0.0f, (float)h, -1.0f, 1.0f);
 
+			// T-F-C: the staging slot pick keys on the frame index (the
+			// record fills it from the record index).
 			app.m_Renderer->SetWindowCommandBuffer(*ctx->RenderState, context.CommandBuffer);
 			app.m_Renderer->SetWindowViewport(*ctx->RenderState, w, h);
-			app.m_Renderer->RenderBatches(batched, ortho, *ctx->RenderState);
+			app.m_Renderer->RenderBatches(batched, ortho, *ctx->RenderState, context.FrameIndex);
 		}
 	});
 }

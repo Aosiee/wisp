@@ -592,10 +592,10 @@ uint64_t RendererVulkan::WrapUIImageHandle(const TinyEngine::UIImageHandle& hand
 
 void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4& orthoProjection)
 {
-	RenderBatches(data, orthoProjection, *m_DefaultState);
+	RenderBatches(data, orthoProjection, *m_DefaultState, 0);
 }
 
-void RendererVulkan::EnsureFrameResources(const BatchedDrawData& data, WispWindowRenderState& state)
+void RendererVulkan::EnsureFrameResources(const BatchedDrawData& data, WispWindowRenderState& state, uint32_t frameIndex)
 {
 	WispVulkanImpl& impl = *m_Impl;
 	if (!impl.Device)
@@ -614,13 +614,13 @@ void RendererVulkan::EnsureFrameResources(const BatchedDrawData& data, WispWindo
 
 	// Grow the staging buffers to cover this frame's batch data (the slot
 	// matches RenderBatches' pick - same frame, same CurrentFrameIndex).
-	StagingBuffers& staging = state.Staging[TinyEngine::Profiler::Get().CurrentFrameIndex() % 2];
+	StagingBuffers& staging = state.Staging[frameIndex % 2];
 	uint32_t vbBytes = (uint32_t)(data.Vertices.size() * sizeof(BatchedVertex));
 	uint32_t ibBytes = (uint32_t)(data.Indices.size() * sizeof(uint32_t));
 	EnsureStagingBuffers(impl, staging, vbBytes, ibBytes);
 }
 
-void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4& orthoProjection, WispWindowRenderState& state)
+void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4& orthoProjection, WispWindowRenderState& state, uint32_t frameIndex)
 {
 	WispVulkanImpl& impl = *m_Impl;
 	if (!impl.Device || !state.CommandBuffer || data.Vertices.empty() || !impl.RectPipelineInit)
@@ -637,7 +637,7 @@ void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4&
 	// in the old frame index was always even, so it contributed nothing).
 	// T-F-B.3: the buffers themselves were ensured by EnsureFrameResources
 	// on the extract side - recording never creates device objects.
-	StagingBuffers& staging = state.Staging[TinyEngine::Profiler::Get().CurrentFrameIndex() % 2];
+	StagingBuffers& staging = state.Staging[frameIndex % 2];
 	uint32_t vbBytes = (uint32_t)(data.Vertices.size() * sizeof(BatchedVertex));
 	uint32_t ibBytes = (uint32_t)(data.Indices.size() * sizeof(uint32_t));
 	TE_CORE_ASSERT(TinyEngine::rhi::IsValid(staging.VB) && staging.VBCapacity >= vbBytes,

@@ -36,8 +36,10 @@ struct WindowContext
 
 	// T-F-B.3: the update (extract, main thread) builds + stores the
 	// frame's batches; the draw callback (record, Loom worker) replays
-	// this stored copy - it never touches the widget tree.
-	BatchedDrawData LastBatches;
+	// this stored copy - it never touches the widget tree. T-F-C-B:
+	// double-buffered by the frame slot - the pipelined update (frame N)
+	// writes slot N%2 while the record (frame N-1) reads slot (N-1)%2.
+	BatchedDrawData LastBatches[2];
 
 	// Input / hover.
 	glm::vec2 MousePos{ -1, -1 };
