@@ -90,7 +90,7 @@ void UIApplication::Init(FontCache* fontCache)
 			TinyEngine::DebugDrawVertices geometry;
 			geometry.Vertices = screenVerts.data();
 			geometry.VertexCount = static_cast<uint32_t>(screenVerts.size());
-			TinyEngine::RendererDebug::SubmitDebugScreenOverlay(geometry, { (float)logicalW, (float)logicalH });
+			TinyEngine::RendererDebug::SubmitDebugScreenOverlay(geometry, { (float)logicalW, (float)logicalH }, context.FrameIndex);
 		}
 	});
 
