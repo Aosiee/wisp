@@ -1554,9 +1554,13 @@ void UIApplication::SwitchToLayer(const std::string& name, FocusEntryPolicy poli
 				m_FocusLayerStack.pop_back();
 			}
 			auto& target = m_FocusLayerStack.back();
+			// Move the state OUT before the pop destroys it - the reads
+			// below (target.name in particular) would otherwise dereference
+			// the freed element (an ASAN-visible use-after-free).
+			FocusLayerState targetState = std::move(target);
 			m_FocusLayerStack.pop_back();
-			m_CurrentLayerId = target.layerId;
-			m_CurrentLayerName = target.name;
+			m_CurrentLayerId = targetState.layerId;
+			m_CurrentLayerName = targetState.name;
 			if (m_FocusWidget) m_FocusWidget->OnFocusLost();
 			m_FocusWidget = nullptr;
 
