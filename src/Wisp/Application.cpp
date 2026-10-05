@@ -8,7 +8,8 @@
 #include "TinyEngine/Renderer/RendererDebug.h"
 #include "Wisp/Widgets.h"
 #include "TinyEngine/Renderer/RenderPassContext.h"
-#include "TinyEngine/Core/Application.h" // for GetWindow()
+#include "TinyEngine/Core/Application.h"
+#include "TinyEngine/CVar/EngineCVars.h" // for GetWindow()
 #include "TinyEngine/Memory/MemorySubsystem.h"
 #include "TinyEngine/Core/Input.h"
 #include <GLFW/glfw3.h>
@@ -72,7 +73,12 @@ void UIApplication::Init(FontCache* fontCache)
 
 		uint32_t w = context.Width;
 		uint32_t h = context.Height;
-		app.Tick(*ctx, w, h);
+
+		// The widget tree arranges in the LOGICAL space (the physical
+		// size divided by the scale); the renderer's ortho then scales
+		// the result back onto the full window.
+		const float uiScale = std::max(0.25f, TinyEngine::cvars::ui_scale.Get());
+		app.Tick(*ctx, (uint32_t)((float)w / uiScale), (uint32_t)((float)h / uiScale));
 
 		// Per-window mouse scale (logical -> physical) and content scale.
 		GLFWwindow* win = (GLFWwindow*)context.WindowHandle;
@@ -134,10 +140,18 @@ void UIApplication::Init(FontCache* fontCache)
 		uint32_t w = context.Width;
 		uint32_t h = context.Height;
 
+		// The logical layout space shrinks by the scale; the ortho maps
+		// the logical rects back onto the full physical window - the
+		// whole surface (text + widgets + spacing) scales uniformly at
+		// this single boundary.
+		const float uiScale = std::max(0.25f, TinyEngine::cvars::ui_scale.Get());
+		const float logicalW = (float)w / uiScale;
+		const float logicalH = (float)h / uiScale;
+
 		const BatchedDrawData& batched = ctx->LastBatches[context.FrameIndex % 2];
 		if (!batched.Vertices.empty())
 		{
-			glm::mat4 ortho = glm::ortho(0.0f, (float)w, 0.0f, (float)h, -1.0f, 1.0f);
+			glm::mat4 ortho = glm::ortho(0.0f, logicalW, 0.0f, logicalH, -1.0f, 1.0f);
 
 			// T-F-C: the staging slot pick keys on the frame index (the
 			// record fills it from the record index).
@@ -498,7 +512,10 @@ void UIApplication::SetMousePosition(void* window, const glm::vec2& screenPos)
 {
 	WindowContext* ctx = window ? GetWindowContext(window) : GetFocusedContext();
 	if (!ctx) return;
-	ctx->MousePos = { screenPos.x * ctx->MouseScale.x, screenPos.y * ctx->MouseScale.y };
+	// The physical position divides back into the logical layout space
+	// the widget tree arranges in.
+	const float uiScale = std::max(0.25f, TinyEngine::cvars::ui_scale.Get());
+	ctx->MousePos = { screenPos.x * ctx->MouseScale.x / uiScale, screenPos.y * ctx->MouseScale.y / uiScale };
 	if (m_DragOp)
 	{
 		RouteDrag(ctx->MousePos);
@@ -543,7 +560,13 @@ void UIApplication::SyncMousePositions()
 		// position and GLFW's warp target, which made the Wisp hover path
 		// (and anything keyed off it) flicker every frame.
 		glm::vec2 pos = TinyEngine::Input::GetMousePosition();
-		ctx->MousePos = { pos.x * ctx->MouseScale.x, pos.y * ctx->MouseScale.y };
+		// The same logical-space conversion the event path applies - this
+		// per-frame refresh overwrites the event position, so it must
+		// divide too or the hover/click coordinates land in the physical
+		// space while the layout is the logical (the 1.5-scale
+		// "everything's off" bug).
+		const float uiScale = std::max(0.25f, TinyEngine::cvars::ui_scale.Get());
+		ctx->MousePos = { pos.x * ctx->MouseScale.x / uiScale, pos.y * ctx->MouseScale.y / uiScale };
 		if (m_DragOp && m_DragContext == ctx.get())
 			RouteDrag(ctx->MousePos);
 		else if (ctx->PendingDragWidget)

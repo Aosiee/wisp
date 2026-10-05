@@ -4,6 +4,7 @@
 
 #include "Wisp/FontCache.h"
 #include "TinyEngine/Core/Log.h"
+#include "TinyEngine/CVar/EngineCVars.h"
 #include <algorithm>
 #include <cstring>
 
@@ -84,6 +85,19 @@ const GlyphInfo* FontCache::GetGlyph(FontHandle font, uint32_t codepoint, float 
 	FontFace* face = GetFace(font);
 	if (!face || pixelSize <= 0.0f) return nullptr;
 
+	// The glyphs rasterize at the SCALED size (crisp) while the
+	// GlyphInfo's layout metrics stay in the LOGICAL units (the layout
+	// space is unchanged - the renderer scales the geometry). A scale
+	// change drops the cache + the atlas (the dirty flag drives the
+	// existing rebuild).
+	const float uiScale = TinyEngine::cvars::ui_scale.Get();
+	if (uiScale != m_RasterizedScale)
+	{
+		m_RasterizedScale = uiScale;
+		m_GlyphCache.clear();
+		m_AtlasDirty = true;
+	}
+
 	GlyphKey key{ font, codepoint, pixelSize };
 	auto it = m_GlyphCache.find(key);
 	if (it != m_GlyphCache.end())
@@ -108,7 +122,8 @@ bool FontCache::RasterizeGlyph(FontHandle font, uint32_t codepoint, float pixelS
 
 	// The size is per-call: every widget rasterizes at the size IT draws
 	// at, independent of whatever any other widget last measured.
-	float scale = stbtt_ScaleForPixelHeight(&stbInfo, pixelSize);
+	const float uiScale = m_RasterizedScale;
+	float scale = stbtt_ScaleForPixelHeight(&stbInfo, pixelSize * uiScale);
 
 	int advanceWidth, leftSideBearing;
 	stbtt_GetCodepointHMetrics(&stbInfo, codepoint, &advanceWidth, &leftSideBearing);
@@ -120,12 +135,14 @@ bool FontCache::RasterizeGlyph(FontHandle font, uint32_t codepoint, float pixelS
 	int bw = x1 - x0;
 	int bh = y1 - y0;
 
+	// The bitmap dims stay the rasterized pixels (the atlas packer needs
+	// them); the layout metrics below divide back to the LOGICAL units.
 	outInfo.Codepoint = codepoint;
-	outInfo.AdvanceX = advanceWidth * scale;
-	outInfo.BearingX = (float)leftSideBearing * scale;
-	outInfo.BearingY = (float)y0;
-	outInfo.Width  = (float)bw;
-	outInfo.Height = (float)bh;
+	outInfo.AdvanceX = advanceWidth * scale / uiScale;
+	outInfo.BearingX = (float)leftSideBearing * scale / uiScale;
+	outInfo.BearingY = (float)y0 / uiScale;
+	outInfo.Width  = (float)bw / uiScale;
+	outInfo.Height = (float)bh / uiScale;
 
 	// Pack into atlas
 	if (bw > 0 && bh > 0)

@@ -59,8 +59,25 @@ public:
 			effectiveWrap = geom.LocalSize.x;
 		m_CachedWrapWidth = (effectiveWrap > 0) ? effectiveWrap : -1.0f;
 
-		const uint8_t* p = (const uint8_t*)m_Text.data();
-		const uint8_t* end = p + m_Text.size();
+		// The single-line ellipsis - the text truncates with
+		// "..." against the widget's ARRANGED width (the fixed label/
+		// description columns) instead of overprinting the next column.
+		std::string displayText = m_Text;
+		if (m_WrapMode == WrapMode::None)
+		{
+			const float limit = geom.LocalSize.x - m_PaddingRight;
+			if (limit > 0.0f && m_FontCache->MeasureText(m_Font, m_Text, m_FontSize).x > limit)
+			{
+				const float ellipsisW = m_FontCache->MeasureText(m_Font, "...", m_FontSize).x;
+				while (!displayText.empty()
+					&& m_FontCache->MeasureText(m_Font, displayText, m_FontSize).x + ellipsisW > limit)
+					displayText.resize(displayText.size() - 1);
+				displayText += "...";
+			}
+		}
+
+		const uint8_t* p = (const uint8_t*)displayText.data();
+		const uint8_t* end = p + displayText.size();
 		uint32_t prevCp = 0;
 		const uint8_t* lastSpaceP = nullptr;
 

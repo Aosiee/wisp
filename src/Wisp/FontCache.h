@@ -115,6 +115,10 @@ private:
 
 	// Atlas
 	std::vector<uint8_t> m_AtlasData;
+
+	// The scale the glyphs were last rasterized at (the cache + the
+	// atlas reset when ui.scale changes).
+	float m_RasterizedScale = 1.0f;
 	uint32_t m_AtlasWidth  = 512;
 	uint32_t m_AtlasHeight = 512;
 	mutable bool m_AtlasDirty  = false;

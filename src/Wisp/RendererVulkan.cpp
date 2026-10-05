@@ -1,4 +1,5 @@
 #include "Wisp/RendererVulkan.h"
+#include "TinyEngine/CVar/EngineCVars.h"
 #include "Wisp/FontCache.h"
 
 #include "TinyEngine/RHI/RHI.h"
@@ -637,8 +638,11 @@ void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4&
 		if (batch.ClipIndex >= 0 && batch.ClipIndex < (int)data.ClipRects.size())
 		{
 			const glm::vec4& cr = data.ClipRects[batch.ClipIndex];
-			commandList->SetScissor((int32_t)(cr.x * data.DpiScale), (int32_t)(cr.y * data.DpiScale),
-				(uint32_t)(cr.z * data.DpiScale), (uint32_t)(cr.w * data.DpiScale));
+			// The logical clip rects convert to the physical
+			// scissor (the DPI scale + the UI scale).
+			const float clipScale = data.DpiScale * TinyEngine::cvars::ui_scale.Get();
+			commandList->SetScissor((int32_t)(cr.x * clipScale), (int32_t)(cr.y * clipScale),
+				(uint32_t)(cr.z * clipScale), (uint32_t)(cr.w * clipScale));
 		}
 		else
 		{

@@ -39,6 +39,7 @@ public:
 
 	const std::string& GetText() const { return m_Text; }
 	void SetText(const std::string& t) { m_Text = t; m_CaretPos = (int)t.size(); m_Anchor = m_CaretPos; InvalidateLayout(); }
+	void SetPlaceholder(const std::string& placeholder) { m_Placeholder = placeholder; InvalidateLayout(); }
 	void SetOnTextChanged(std::function<void(const std::string&)> cb) { m_OnTextChanged = std::move(cb); }
 	void SetReadOnly(bool ro) { m_ReadOnly = ro; }
 	void SetWrapMode(WrapMode m) { m_WrapMode = m; InvalidateLayout(); }
@@ -80,7 +81,7 @@ public:
 		drawList.AddBox(layerId + 1, absPos, { w, 1 }, glm::vec4(0.2f, 0.2f, 0.3f, 1.0f), clipIdx);
 		drawList.AddBox(layerId + 1, { absPos.x, absPos.y + h - 1 }, { w, 1 }, glm::vec4(0.2f, 0.2f, 0.3f, 1.0f), clipIdx);
 
-		if (!m_FontCache || m_Text.empty()) return layerId + 4;
+		if (!m_FontCache || (m_Text.empty() && m_Placeholder.empty())) return layerId + 4;
 
 		FontMetrics metrics = m_FontCache->GetMetrics(m_Font, m_FontSize);
 		float startX = std::floor(absPos.x + 4.0f);
@@ -91,14 +92,24 @@ public:
 		m_CachedWrapWidth = effWrap;
 		if (effWrap <= 0) effWrap = 1e9f;
 		float absRight = startX + effWrap;
+
+		// The placeholder (dimmed) when the field is empty + unfocused.
+		const bool showingPlaceholder = m_Text.empty() && !HasFocus() && !m_Placeholder.empty();
+		const std::string& displayText = showingPlaceholder ? m_Placeholder : m_Text;
+
 		int selStart = std::min(m_Anchor, m_CaretPos), selEnd = std::max(m_Anchor, m_CaretPos);
 		int glyphIdx = 0;
+		const bool recordGlyphs = !showingPlaceholder;
 
-		// Cache glyph positions for click-to-position (exact match with rendered layout)
+		// Cache glyph positions for click-to-position (exact match with rendered layout).
+		// The placeholder's glyphs are EXCLUDED - a click on the placeholder
+		// positions the caret at 0, never past the real text.
 		m_GlyphPositions.clear();
-		m_GlyphPositions.reserve(m_Text.size());
-		const uint8_t* p = (const uint8_t*)m_Text.data();
-		const uint8_t* end = p + m_Text.size();
+		if (!showingPlaceholder)
+			m_GlyphPositions.reserve(displayText.size());
+
+		const uint8_t* p = (const uint8_t*)displayText.data();
+		const uint8_t* end = p + displayText.size();
 		uint32_t prevCp = 0;
 		const uint8_t* lastSpaceP = nullptr;
 		float caretX = startX, caretY = penY;
@@ -117,7 +128,7 @@ public:
 			{
 				penX = startX; penY += metrics.LineHeight; lineBreaks++;
 				prevCp = 0; lastSpaceP = nullptr;
-				m_GlyphPositions.push_back({ penX - m_CachedAbsX, penY - m_CachedAbsY, (float)glyphIdx });
+				if (recordGlyphs) m_GlyphPositions.push_back({ penX - m_CachedAbsX, penY - m_CachedAbsY, (float)glyphIdx });
 				glyphIdx++; continue;
 			}
 
@@ -132,13 +143,13 @@ public:
 			{
 				float ww = 0; const uint8_t* lk = p; uint32_t lp = cp;
 				while (lk < end) { uint32_t lc; if ((*lk&0x80)==0){lc=*lk;lk++;}else if((*lk&0xE0)==0xC0&&lk+1<end){lc=((*lk&0x1F)<<6)|(lk[1]&0x3F);lk+=2;}else if((*lk&0xF0)==0xE0&&lk+2<end){lc=((*lk&0x0F)<<12)|((lk[1]&0x3F)<<6)|(lk[2]&0x3F);lk+=3;}else break; if(lc==' '||lc=='\n')break; auto* lgi=m_FontCache->GetGlyph(m_Font,lc,m_FontSize); float la=lgi?lgi->AdvanceX:0; if(lp!=' ') la+=m_FontCache->GetKerning(m_Font,lp,lc,m_FontSize); ww+=std::round(la); lp=lc; }
-				if (penX + advance + ww > absRight && penX > startX) { penX = startX; penY += metrics.LineHeight; prevCp = 0; lastSpaceP = nullptr; if (glyphIdx <= m_CaretPos) { caretX = penX; caretY = penY; } m_GlyphPositions.push_back({penX - m_CachedAbsX, penY - m_CachedAbsY, (float)glyphIdx}); glyphIdx++; continue; }
+				if (penX + advance + ww > absRight && penX > startX) { penX = startX; penY += metrics.LineHeight; prevCp = 0; lastSpaceP = nullptr; if (glyphIdx <= m_CaretPos) { caretX = penX; caretY = penY; } if (recordGlyphs) m_GlyphPositions.push_back({penX - m_CachedAbsX, penY - m_CachedAbsY, (float)glyphIdx}); glyphIdx++; continue; }
 				lastSpaceP = p;
 			}
 
 			bool overflow = (effWrap > 0 && penX + advance > absRight && penX > startX);
 			if (overflow && m_WrapMode == WrapMode::Word && lastSpaceP)
-				{ p = lastSpaceP; penX = startX; penY += metrics.LineHeight; prevCp = 0; lastSpaceP = nullptr; if (glyphIdx <= m_CaretPos) { caretX = penX; caretY = penY; } m_GlyphPositions.push_back({penX - m_CachedAbsX, penY - m_CachedAbsY, (float)glyphIdx}); glyphIdx++; continue; }
+				{ p = lastSpaceP; penX = startX; penY += metrics.LineHeight; prevCp = 0; lastSpaceP = nullptr; if (glyphIdx <= m_CaretPos) { caretX = penX; caretY = penY; } if (recordGlyphs) m_GlyphPositions.push_back({penX - m_CachedAbsX, penY - m_CachedAbsY, (float)glyphIdx}); glyphIdx++; continue; }
 			if (overflow && m_WrapMode == WrapMode::Character)
 				{ penX = startX; penY += metrics.LineHeight; prevCp = 0; if (glyphIdx <= m_CaretPos) { caretX = penX; caretY = penY; } }
 
@@ -149,9 +160,10 @@ public:
 			float gx = penX + gi->BearingX;
 			float gy = penY + metrics.Ascent + gi->BearingY;
 			glm::vec2 uvs[4] = {{gi->AtlasU0,gi->AtlasV0},{gi->AtlasU1,gi->AtlasV0},{gi->AtlasU1,gi->AtlasV1},{gi->AtlasU0,gi->AtlasV1}};
-			drawList.AddText(layerId + 3, {gx,gy}, std::string(1,(char)cp), uvs, gi->AdvanceX, gi->Height, glm::vec4(1,1,1,1), clipIdx);
+			drawList.AddText(layerId + 3, {gx,gy}, std::string(1,(char)cp), uvs, gi->AdvanceX, gi->Height,
+				showingPlaceholder ? glm::vec4(0.45f,0.48f,0.55f,1.0f) : glm::vec4(1,1,1,1), clipIdx);
 			penX += std::round(advance);
-			m_GlyphPositions.push_back({ penX - advance * 0.5f - m_CachedAbsX, penY - m_CachedAbsY, (float)glyphIdx });
+			if (recordGlyphs) m_GlyphPositions.push_back({ penX - advance * 0.5f - m_CachedAbsX, penY - m_CachedAbsY, (float)glyphIdx });
 			prevCp = cp; glyphIdx++;
 		}
 		if (m_CaretPos >= glyphIdx) { caretX = penX; caretY = penY; }
@@ -407,6 +419,12 @@ public:
 
 		DeleteSelection();
 
+		// The placeholder paints glyphs, but the caret must never exceed
+		// the REAL text (a click positioned against the placeholder's
+		// glyphs would otherwise land the caret out of range here and
+		// std::string::insert would throw - the search-box crash).
+		m_CaretPos = std::min(m_CaretPos, (int)m_Text.size());
+
 		char utf8[5] = {};
 		int len = 0;
 		if (codepoint < 0x80)      { utf8[0] = (char)codepoint; len = 1; }
@@ -470,6 +488,7 @@ private:
 	float      m_FontSize;
 	mutable EditableTextStyle m_Style;
 	std::string m_Text;
+	std::string m_Placeholder;
 	int        m_CaretPos = 0;
 	int        m_Anchor = 0;
 	bool       m_Dragging = false;
