@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <glm/glm.hpp>
 
+#include "TinyEngine/Memory/FrameArenaAllocator.h"
+
 #include "TinyEngine/Renderer/UIImageHandle.h"
 
 namespace wisp {
@@ -35,10 +37,12 @@ struct BatchedBatch
 
 struct BatchedDrawData
 {
-	std::vector<BatchedVertex> Vertices;
-	std::vector<uint32_t>      Indices;
-	std::vector<BatchedBatch>  Batches;
-	std::vector<glm::vec4>     ClipRects; // x, y, w, h (logical, scaled by DpiScale for scissor)
+	// The batch output builds into the frame arena (per frame
+	// slot) - the arena resets when the slot is reused.
+	std::vector<BatchedVertex, TinyEngine::FrameArenaAllocator<BatchedVertex>> Vertices;
+	std::vector<uint32_t,      TinyEngine::FrameArenaAllocator<uint32_t>>      Indices;
+	std::vector<BatchedBatch,  TinyEngine::FrameArenaAllocator<BatchedBatch>>  Batches;
+	std::vector<glm::vec4,     TinyEngine::FrameArenaAllocator<glm::vec4>>     ClipRects; // x, y, w, h (logical, scaled by DpiScale for scissor)
 	float                      DpiScale = 1.0f;
 };
 

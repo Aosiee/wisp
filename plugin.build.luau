@@ -31,8 +31,38 @@ plugin "wisp" {
 
 local is_linux = config.platform == "linux"
 local is_editor_build = config.features.editor == "1"
+
+-- The UI shaders are committed GLSL cooked by the normal shader
+-- rule (the tinycook tool is a build output of the tinycook target).
+local wisp_content = "content"
+local wisp_tinycook = ".kiln/out/" .. config.platform .. "-" .. config.config .. "/bin/tinycook"
+
+cook "wisp_shaders_vert" {
+    rule = "cook_tinyasset",
+    inputs = glob(wisp_content .. "/shaders/vulkan/*.vert"),
+    params = {
+        tool = wisp_tinycook,
+        asset_type = "shader",
+        stage = "vert",
+        lint_strict = (config.config == "release" or config.config == "shipping") and "1" or "0",
+        debug_info = (config.config == "shipping") and "0" or "1",
+    },
+}
+
+cook "wisp_shaders_frag" {
+    rule = "cook_tinyasset",
+    inputs = glob(wisp_content .. "/shaders/vulkan/*.frag"),
+    params = {
+        tool = wisp_tinycook,
+        asset_type = "shader",
+        stage = "frag",
+        lint_strict = (config.config == "release" or config.config == "shipping") and "1" or "0",
+        debug_info = (config.config == "shipping") and "0" or "1",
+    },
+}
 local sanitizers = require "build/sanitizers"
 local conf_define = sanitizers.conf_define
+local conf_shipping_define = sanitizers.conf_shipping_define
 
 local wisp_sources = {
     glob("src/**/*.cpp"),
@@ -43,6 +73,7 @@ local wisp_defines = {
     "_CRT_SECURE_NO_WARNINGS",
     conf_define,
     is_linux and "TE_PLATFORM_LINUX" or "TE_PLATFORM_WINDOWS",
+    conf_shipping_define,
 }
 
 local wisp_deps = {
@@ -74,6 +105,7 @@ module "wisp_editor" {
         "_CRT_SECURE_NO_WARNINGS",
         conf_define,
         is_linux and "TE_PLATFORM_LINUX" or "TE_PLATFORM_WINDOWS",
+        conf_shipping_define,
     },
     deps = wisp_deps,
     flags = sanitizers.flags,

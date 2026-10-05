@@ -1,12 +1,15 @@
 #include "Wisp/Application.h"
 #include "Wisp/Batcher.h"
 #include "Wisp/RendererVulkan.h"
+#include "TinyEngine/Core/HotReloadClient.h"
+#include "TinyEngine/Asset/TinyAssetLoader.h"
 #include "DebugDraw.h"
 #include "TinyEngine/Renderer/DebugDrawCommon.h"
 #include "TinyEngine/Renderer/RendererDebug.h"
 #include "Wisp/Widgets.h"
 #include "TinyEngine/Renderer/RenderPassContext.h"
 #include "TinyEngine/Core/Application.h" // for GetWindow()
+#include "TinyEngine/Memory/MemorySubsystem.h"
 #include "TinyEngine/Core/Input.h"
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -28,6 +31,18 @@ void UIApplication::Init(FontCache* fontCache)
 
 	s_Instance->m_Renderer = std::make_unique<RendererVulkan>();
 	s_Instance->m_Renderer->Init(fontCache);
+
+	// The shader-reload routing (the engine cannot include Wisp
+	// headers, so the backend registers itself here). The hot-reload
+	// client itself is stripped from TE_CONF_DIST builds.
+#if !defined(TE_CONF_DIST)
+	TinyEngine::HotReload::SetShaderReloadCallback([](const std::string& path) {
+		return UIApplication::ReloadShader(path);
+	});
+	TinyEngine::HotReload::SetFontReloadCallback([](const std::string& path) {
+		return UIApplication::ReloadFont(path);
+	});
+#endif // !TE_CONF_DIST
 
 	// The default (main-window) context: created unbound; the first window
 	// that reaches the draw callback binds it.
@@ -69,8 +84,19 @@ void UIApplication::Init(FontCache* fontCache)
 		glfwGetWindowContentScale(win, &csx, &csy);
 		ctx->ContentScale = csx;
 
+		// The batch output builds into the engine's frame arena
+		// (slot = frame index % 2); the slot is reset before the build.
+		TinyEngine::FrameAllocator* arena = nullptr;
+		if (TinyEngine::Application::TryGet())
+		{
+			TinyEngine::Engine& engine = TinyEngine::Application::Get().GetEngine();
+			if (TinyEngine::MemorySubsystem* memory = engine.TryGet<TinyEngine::MemorySubsystem>())
+				arena = &memory->GetFrameAllocator();
+		}
 		BatchedDrawData& lastBatches = ctx->LastBatches[context.FrameIndex % 2];
-		lastBatches = BatchDrawList(ctx->DrawList);
+		if (arena)
+			arena->ResetSlot(context.FrameIndex);
+		lastBatches = BatchDrawList(ctx->DrawList, arena, context.FrameIndex);
 		if (!lastBatches.Vertices.empty())
 		{
 			lastBatches.DpiScale = 1.0f; // physical coords, no DPI scaling needed
@@ -120,6 +146,27 @@ void UIApplication::Init(FontCache* fontCache)
 			app.m_Renderer->RenderBatches(batched, ortho, *ctx->RenderState, context.FrameIndex);
 		}
 	});
+}
+
+bool UIApplication::ReloadShader(const std::string& assetPath)
+{
+	if (!s_Instance || !s_Instance->m_Renderer)
+		return false;
+	return s_Instance->m_Renderer->ReloadShader(assetPath);
+}
+
+bool UIApplication::ReloadFont(const std::string& assetPath)
+{
+	if (!s_Instance || !s_Instance->m_FontCache)
+		return false;
+
+	std::vector<uint8_t> bytes = TinyEngine::TinyAssetLoader::LoadFont(assetPath);
+	if (bytes.empty())
+	{
+		TE_CORE_WARN(TinyEngine::LogCore, "Wisp: font reload failed - keeping the current font.");
+		return true;
+	}
+	return s_Instance->m_FontCache->ReloadFontByPath(assetPath, bytes.data(), bytes.size());
 }
 
 void UIApplication::Shutdown()

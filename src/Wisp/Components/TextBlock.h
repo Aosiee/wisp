@@ -24,6 +24,14 @@ public:
 
 	glm::vec2 ComputeDesiredSize() const override
 	{
+		// A font reload invalidates the cached measurement (the
+		// glyph metrics changed under us).
+		if (m_FontCache && m_MeasuredGeneration != m_FontCache->GetLayoutGeneration())
+		{
+			m_MeasuredGeneration = m_FontCache->GetLayoutGeneration();
+			m_CachedWrapWidth = -1.0f;
+		}
+
 		if (!m_FontCache) return { 0, 0 };
 		float wrapW = -1.0f;
 		if (m_WrapMode != WrapMode::None)
@@ -162,6 +170,7 @@ private:
 	bool            m_AutoWrap = true;
 	float           m_WrapWidth = -1.0f;
 	mutable float   m_CachedWrapWidth = -1.0f;
+	mutable uint64_t m_MeasuredGeneration = 0;
 	float           m_PaddingRight = 0.0f;
 };
 

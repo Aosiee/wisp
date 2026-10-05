@@ -1,0 +1,9 @@
+{
+  "meta": 2,
+  "id": "30718442db4fcb84143a335ae8ad4fc0",
+  "type": "Shader",
+  "import": {
+    "stage": "infer",
+    "entry": "main"
+  }
+}

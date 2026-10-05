@@ -50,7 +50,16 @@ public:
 	~FontCache();
 
 	// Load a font from memory. Returns a handle for subsequent API calls.
-	FontHandle AddFont(const uint8_t* ttfData, size_t ttfSize);
+	FontHandle AddFont(const uint8_t* ttfData, size_t ttfSize, const std::string& sourcePath = {});
+
+	// Font hot reload - re-parses the face, drops every cached
+	// glyph (the atlas resets + re-rasterises lazily), and bumps the
+	// layout generation so the text widgets re-measure.
+	bool ReloadFontByPath(const std::string& sourcePath, const uint8_t* ttfData, size_t ttfSize);
+
+	// Bumped on every font reload; the text widgets compare it
+	// against their last-measure generation and re-measure when it moved.
+	uint64_t GetLayoutGeneration() const { return m_LayoutGeneration; }
 
 	// Retrieves or rasterizes the glyph for a codepoint at the given pixel
 	// size. The size is part of the cache key - callers always pass the
@@ -81,6 +90,7 @@ private:
 	{
 		std::vector<uint8_t> TtfData;
 		int                  StbFontOffset = 0; // stb_truetype font index
+		std::string          SourcePath; // for the reload routing
 	};
 
 	struct GlyphKey
@@ -108,6 +118,7 @@ private:
 	uint32_t m_AtlasWidth  = 512;
 	uint32_t m_AtlasHeight = 512;
 	mutable bool m_AtlasDirty  = false;
+	uint64_t m_LayoutGeneration = 0;
 
 	// Shelf packing state
 	uint32_t m_ShelfY = 0;

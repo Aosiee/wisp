@@ -5,145 +5,13 @@
 #include "TinyEngine/Core/Application.h"
 #include "TinyEngine/Core/RhiDevice.h"
 #include "TinyEngine/Debug/Profiler.h"
-#include "assetio/VulkanShaderCompiler.h"
+#include "TinyEngine/Asset/TinyAssetLoader.h"
+#include "TinyEngine/Asset/AssetManager.h"
 
 #include <cstring>
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace wisp {
-
-// ---- Embedded GLSL (compiled at runtime via VulkanShaderCompiler) -----------
-
-static const char* kRectVertexGLSL = R"(
-#version 450
-layout(push_constant) uniform PC { mat4 projection; } pc;
-layout(location = 0) in vec3 aPos;
-layout(location = 1) in vec2 aUV;
-layout(location = 2) in vec4 aCol;
-layout(location = 0) out vec4 vCol;
-layout(location = 1) out vec2 vUV;
-void main() { gl_Position = pc.projection * vec4(aPos, 1.0); vCol = aCol; vUV = aUV; }
-)";
-
-static const char* kRectFragmentGLSL = R"(
-#version 450
-layout(location = 0) in vec4 vCol;
-layout(location = 1) in vec2 vUV;
-layout(location = 0) out vec4 outCol;
-void main() { outCol = vCol; }
-)";
-
-static const char* kTextVertexGLSL = R"(
-#version 450
-layout(push_constant) uniform PC { mat4 projection; } pc;
-layout(location = 0) in vec3 aPos;
-layout(location = 1) in vec2 aUV;
-layout(location = 2) in vec4 aCol;
-layout(location = 0) out vec4 vCol;
-layout(location = 1) out vec2 vUV;
-void main() { gl_Position = pc.projection * vec4(aPos, 1.0); vCol = aCol; vUV = aUV; }
-)";
-
-static const char* kTextFragmentGLSL = R"(
-#version 450
-#extension GL_EXT_nonuniform_qualifier : require
-layout(push_constant) uniform PC { mat4 projection; uint texIndex; } pc;
-layout(location = 0) in vec4 vCol;
-layout(location = 1) in vec2 vUV;
-layout(location = 0) out vec4 outCol;
-layout(binding = 0) uniform sampler2D u_Textures[];
-void main() { float a = texture(u_Textures[nonuniformEXT(int(pc.texIndex))], vUV).a; outCol = vCol * vec4(1.0, 1.0, 1.0, a); }
-)";
-
-static const char* kImageVertexGLSL = R"(
-#version 450
-layout(push_constant) uniform PC { mat4 projection; } pc;
-layout(location = 0) in vec3 aPos;
-layout(location = 1) in vec2 aUV;
-layout(location = 2) in vec4 aCol;
-layout(location = 0) out vec4 vCol;
-layout(location = 1) out vec2 vUV;
-void main() { gl_Position = pc.projection * vec4(aPos, 1.0); vCol = aCol; vUV = aUV; }
-)";
-
-static const char* kImageFragmentGLSL = R"(
-#version 450
-#extension GL_EXT_nonuniform_qualifier : require
-layout(push_constant) uniform PC { mat4 projection; uint texIndex; } pc;
-layout(location = 0) in vec4 vCol;
-layout(location = 1) in vec2 vUV;
-layout(location = 0) out vec4 outCol;
-layout(binding = 0) uniform sampler2D u_Textures[];
-void main() { outCol = texture(u_Textures[nonuniformEXT(int(pc.texIndex))], vUV) * vCol; }
-)";
-
-static const char* kRoundedBoxVertexGLSL = R"(
-#version 450
-layout(push_constant) uniform PC {
-    mat4 projection;
-    layout(offset=64) vec4 radii;
-    layout(offset=80) float outlineWidth;
-    layout(offset=96) vec4 outlineColour;
-    layout(offset=112) vec2 halfSize;
-} pc;
-layout(location = 0) in vec3 aPos;
-layout(location = 1) in vec2 aUV;
-layout(location = 2) in vec4 aCol;
-layout(location = 0) out vec4 vCol;
-layout(location = 1) out vec2 vUV;
-layout(location = 2) flat out vec4 vRadii;
-layout(location = 3) flat out float vOutlineWidth;
-layout(location = 4) flat out vec4 vOutlineColour;
-layout(location = 5) flat out vec2 vHalfSize;
-void main() {
-    gl_Position = pc.projection * vec4(aPos, 1.0);
-    vCol = aCol; vUV = aUV;
-    vRadii = pc.radii; vOutlineWidth = pc.outlineWidth; vOutlineColour = pc.outlineColour;
-    vHalfSize = pc.halfSize;
-}
-)";
-
-static const char* kRoundedBoxFragmentGLSL = R"(
-#version 450
-layout(location = 0) in vec4 vCol;
-layout(location = 1) in vec2 vUV;
-layout(location = 2) flat in vec4 vRadii;
-layout(location = 3) flat in float vOutlineWidth;
-layout(location = 4) flat in vec4 vOutlineColour;
-layout(location = 5) flat in vec2 vHalfSize;
-layout(location = 0) out vec4 outCol;
-
-float sdRoundedBox(vec2 p, vec2 b, vec4 r) {
-    r.xy = (p.x > 0.0) ? r.yw : r.xz;
-    r.x  = (p.y > 0.0) ? r.x  : r.y;
-    vec2 q = abs(p) - b + r.x;
-    return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r.x;
-}
-
-void main() {
-    vec2 p = (vUV - 0.5) * 2.0 * vHalfSize;
-    vec4 r = vRadii;
-    float m = min(vHalfSize.x, vHalfSize.y);
-    r = min(r, vec4(m));
-    float d = sdRoundedBox(p, vHalfSize, r);
-
-    // Fill first (AA coverage), then paint the outline ring over it.
-    // The previous outline branch inverted the fill/outline mix and zeroed
-    // the interior alpha, so any rounded box drawn with an outline rendered
-    // ONLY its outline ring and never its fill (the "zero alpha" swatches).
-    float aa = fwidth(d);
-    float fillAlpha = 1.0 - smoothstep(-aa, aa, d);
-    outCol = vCol;
-    outCol.a *= fillAlpha;
-
-    if (vOutlineWidth > 0.0) {
-        float outer = abs(d) - vOutlineWidth;
-        float outerAA = fwidth(outer);
-        float ring = 1.0 - smoothstep(-outerAA, outerAA, outer);
-        outCol = mix(outCol, vOutlineColour, ring);
-    }
-}
-)";
 
 // ---- PIMPL -----------------------------------------------------------------
 
@@ -172,9 +40,17 @@ struct StagingBuffers
 	uint32_t IBCapacity = 0;
 };
 
-// P-D: the RHI-backed implementation. No raw backend identifiers here or
-// anywhere in Wisp (the P-E grep rule); everything goes through rhi::Device
-// + handles.
+// The RHI-backed implementation. No raw backend identifiers here or
+// anywhere in Wisp; everything goes through rhi::Device + handles.
+// The committed/cooked UI shaders (no runtime compile).
+static std::string WispShaderPath(const std::string& name)
+{
+	return TinyEngine::Application::Get().GetEngine().Get<TinyEngine::AssetManager>()
+		.ResolvePluginAsset("wisp", "shaders/vulkan/" + name + ".ctasset");
+}
+
+
+
 struct WispVulkanImpl
 {
 	TinyEngine::rhi::Device* Device = nullptr;
@@ -361,6 +237,28 @@ static const TinyEngine::rhi::PipelineStateDesc::Attribute* WispVertexAttributes
 	return attributes;
 }
 
+static void RecreateWispPipeline(WispVulkanImpl& impl, TinyEngine::rhi::ShaderHandle vs,
+                                  TinyEngine::rhi::ShaderHandle fs, uint32_t pushConstantSize,
+                                  uint32_t pushConstantStages,
+                                  TinyEngine::rhi::PipelineHandle* out, bool* initFlag, const char* name)
+{
+	TinyEngine::rhi::Device& device = *impl.Device;
+	TinyEngine::rhi::PipelineStateDesc spec;
+	spec.VertexShader = vs;
+	spec.FragmentShader = fs;
+	spec.VertexStride = sizeof(BatchedVertex);
+	spec.VertexAttributes = std::span(WispVertexAttributes(), 3);
+	spec.PushConstantSize = pushConstantSize;
+	spec.PushConstantStages = pushConstantStages;
+	spec.ColorAttachmentFormat = TinyEngine::rhi::Format::B8G8R8A8_UNORM;
+	spec.EnableBlend = true;
+	spec.DepthTestEnable = false;
+	spec.DepthWriteEnable = false;
+	spec.DepthAttachmentFormat = TinyEngine::rhi::Format::D32_SFLOAT;
+	*out = device.CreatePipeline(spec, name);
+	*initFlag = true;
+}
+
 bool RendererVulkan::Init(const FontCache* fontCache)
 {
 	WispVulkanImpl& impl = *m_Impl;
@@ -375,8 +273,8 @@ bool RendererVulkan::Init(const FontCache* fontCache)
 
 	// --- Rect pipeline ---
 	{
-		std::vector<uint32_t> vertSpv = TinyEngine::VulkanShaderCompiler::Compile(kRectVertexGLSL, TinyEngine::ShaderStage::Vertex, "ui_rect.vert");
-		std::vector<uint32_t> fragSpv = TinyEngine::VulkanShaderCompiler::Compile(kRectFragmentGLSL, TinyEngine::ShaderStage::Fragment, "ui_rect.frag");
+		std::vector<uint32_t> vertSpv = TinyEngine::TinyAssetLoader::LoadShaderSPIRV(WispShaderPath("ui_rect.vert"));
+		std::vector<uint32_t> fragSpv = TinyEngine::TinyAssetLoader::LoadShaderSPIRV(WispShaderPath("ui_rect.frag"));
 		impl.RectVertexShader = device.CreateShader(vertSpv, TinyEngine::rhi::ShaderStage::Vertex, "Wisp Rect VS");
 		impl.RectFragmentShader = device.CreateShader(fragSpv, TinyEngine::rhi::ShaderStage::Fragment, "Wisp Rect FS");
 
@@ -397,8 +295,8 @@ bool RendererVulkan::Init(const FontCache* fontCache)
 
 	// --- Text pipeline (atlas-textured quads) ---
 	{
-		std::vector<uint32_t> vertSpv = TinyEngine::VulkanShaderCompiler::Compile(kTextVertexGLSL, TinyEngine::ShaderStage::Vertex, "ui_text.vert");
-		std::vector<uint32_t> fragSpv = TinyEngine::VulkanShaderCompiler::Compile(kTextFragmentGLSL, TinyEngine::ShaderStage::Fragment, "ui_text.frag");
+		std::vector<uint32_t> vertSpv = TinyEngine::TinyAssetLoader::LoadShaderSPIRV(WispShaderPath("ui_text.vert"));
+		std::vector<uint32_t> fragSpv = TinyEngine::TinyAssetLoader::LoadShaderSPIRV(WispShaderPath("ui_text.frag"));
 		impl.TextVertexShader = device.CreateShader(vertSpv, TinyEngine::rhi::ShaderStage::Vertex, "Wisp Text VS");
 		impl.TextFragmentShader = device.CreateShader(fragSpv, TinyEngine::rhi::ShaderStage::Fragment, "Wisp Text FS");
 
@@ -420,8 +318,8 @@ bool RendererVulkan::Init(const FontCache* fontCache)
 
 	// --- RoundedBox pipeline ---
 	{
-		std::vector<uint32_t> vertSpv = TinyEngine::VulkanShaderCompiler::Compile(kRoundedBoxVertexGLSL, TinyEngine::ShaderStage::Vertex, "ui_roundedbox.vert");
-		std::vector<uint32_t> fragSpv = TinyEngine::VulkanShaderCompiler::Compile(kRoundedBoxFragmentGLSL, TinyEngine::ShaderStage::Fragment, "ui_roundedbox.frag");
+		std::vector<uint32_t> vertSpv = TinyEngine::TinyAssetLoader::LoadShaderSPIRV(WispShaderPath("ui_roundedbox.vert"));
+		std::vector<uint32_t> fragSpv = TinyEngine::TinyAssetLoader::LoadShaderSPIRV(WispShaderPath("ui_roundedbox.frag"));
 		impl.RoundedBoxVertexShader = device.CreateShader(vertSpv, TinyEngine::rhi::ShaderStage::Vertex, "Wisp RoundedBox VS");
 		impl.RoundedBoxFragmentShader = device.CreateShader(fragSpv, TinyEngine::rhi::ShaderStage::Fragment, "Wisp RoundedBox FS");
 
@@ -442,8 +340,8 @@ bool RendererVulkan::Init(const FontCache* fontCache)
 
 	// --- Image pipeline (per-texture sampled quads) ---
 	{
-		std::vector<uint32_t> vertSpv = TinyEngine::VulkanShaderCompiler::Compile(kImageVertexGLSL, TinyEngine::ShaderStage::Vertex, "ui_image.vert");
-		std::vector<uint32_t> fragSpv = TinyEngine::VulkanShaderCompiler::Compile(kImageFragmentGLSL, TinyEngine::ShaderStage::Fragment, "ui_image.frag");
+		std::vector<uint32_t> vertSpv = TinyEngine::TinyAssetLoader::LoadShaderSPIRV(WispShaderPath("ui_image.vert"));
+		std::vector<uint32_t> fragSpv = TinyEngine::TinyAssetLoader::LoadShaderSPIRV(WispShaderPath("ui_image.frag"));
 		impl.ImageVertexShader = device.CreateShader(vertSpv, TinyEngine::rhi::ShaderStage::Vertex, "Wisp Image VS");
 		impl.ImageFragmentShader = device.CreateShader(fragSpv, TinyEngine::rhi::ShaderStage::Fragment, "Wisp Image FS");
 
@@ -466,6 +364,75 @@ bool RendererVulkan::Init(const FontCache* fontCache)
 	CreateAtlasTexture(impl);
 
 	return true;
+}
+
+bool RendererVulkan::ReloadShader(const std::string& assetPath)
+{
+	WispVulkanImpl& impl = *m_Impl;
+	if (!impl.Device)
+		return false;
+
+	TinyEngine::rhi::Device& device = *impl.Device;
+
+	struct Pair { const char* Name; bool* Flag; TinyEngine::rhi::ShaderHandle* VS; TinyEngine::rhi::ShaderHandle* FS; };
+	const Pair pairs[] = {
+		{ "ui_rect", &impl.RectPipelineInit, &impl.RectVertexShader, &impl.RectFragmentShader },
+		{ "ui_text", &impl.TextPipelineInit, &impl.TextVertexShader, &impl.TextFragmentShader },
+		{ "ui_image", &impl.ImagePipelineInit, &impl.ImageVertexShader, &impl.ImageFragmentShader },
+		{ "ui_roundedbox", &impl.RoundedBoxPipelineInit, &impl.RoundedBoxVertexShader, &impl.RoundedBoxFragmentShader },
+	};
+	for (const Pair& pair : pairs)
+	{
+		if (assetPath.find(pair.Name) == std::string::npos)
+			continue;
+
+		std::vector<uint32_t> vs = TinyEngine::TinyAssetLoader::LoadShaderSPIRVDirect(WispShaderPath(std::string(pair.Name) + ".vert"));
+		std::vector<uint32_t> fs = TinyEngine::TinyAssetLoader::LoadShaderSPIRVDirect(WispShaderPath(std::string(pair.Name) + ".frag"));
+		if (vs.empty() || fs.empty())
+		{
+			TE_CORE_WARN(TinyEngine::LogCore, "Wisp: shader reload failed - keeping the current shaders.");
+			return true;
+		}
+
+		TinyEngine::rhi::ShaderHandle newVS = device.CreateShader(vs, TinyEngine::rhi::ShaderStage::Vertex, (std::string(pair.Name) + ".vert").c_str());
+		TinyEngine::rhi::ShaderHandle newFS = device.CreateShader(fs, TinyEngine::rhi::ShaderStage::Fragment, (std::string(pair.Name) + ".frag").c_str());
+		// Drop the publication flag BEFORE the swap - the record-side
+		// per-batch guards skip the batch while it is false (a bind of the
+		// evicted handle would be a NULL bind).
+		*pair.Flag = false;
+		if (TinyEngine::rhi::IsValid(*pair.VS))
+			device.DestroyShader(*pair.VS);
+		if (TinyEngine::rhi::IsValid(*pair.FS))
+			device.DestroyShader(*pair.FS);
+		*pair.VS = newVS;
+		*pair.FS = newFS;
+
+		// The pipeline itself: destroy the old + recreate through the
+		// cache (the new shader handles key it) - the render path binds
+		// these handles directly, so they must stay valid.
+		const uint32_t pushConstantSize = (pair.Name == std::string("ui_text") || pair.Name == std::string("ui_image"))
+			? (uint32_t)sizeof(TexturedPushConstants)
+			: (pair.Name == std::string("ui_roundedbox")) ? (uint32_t)sizeof(RoundedBoxPushConstants)
+			                                              : (uint32_t)sizeof(glm::mat4);
+		// VERTEX|FRAGMENT where the fragment reads the push block (the
+		// text/image shaders index the bindless array from the fragment).
+		const uint32_t pushConstantStages =
+			(pair.Name == std::string("ui_text") || pair.Name == std::string("ui_image")) ? (1u | 16u) : 1u;
+		TinyEngine::rhi::PipelineHandle* pipeline = nullptr;
+		bool* flag = nullptr;
+		if (pair.Name == std::string("ui_rect")) { pipeline = &impl.RectPipeline; flag = &impl.RectPipelineInit; }
+		else if (pair.Name == std::string("ui_text")) { pipeline = &impl.TextPipeline; flag = &impl.TextPipelineInit; }
+		else if (pair.Name == std::string("ui_image")) { pipeline = &impl.ImagePipeline; flag = &impl.ImagePipelineInit; }
+		else { pipeline = &impl.RoundedBoxPipeline; flag = &impl.RoundedBoxPipelineInit; }
+		// The DestroyShader calls above evicted the cached pipeline (and
+		// released its slot) - the handle is stale; just overwrite it.
+		RecreateWispPipeline(impl, newVS, newFS, pushConstantSize, pushConstantStages, pipeline, flag,
+			(std::string(pair.Name) + " pipeline").c_str());
+
+		TE_CORE_INFO(TinyEngine::LogCore, "Wisp: '{0}' shaders hot-reloaded.", pair.Name);
+		return true;
+	}
+	return false;
 }
 
 void RendererVulkan::Shutdown()
@@ -689,12 +656,16 @@ void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4&
 
 		if (batch.TextureId == 0)
 		{
+			if (!impl.RectPipelineInit)
+				continue;
 			commandList->BindPipeline(impl.RectPipeline);
 			commandList->BindGlobalSet();
 			commandList->PushConstants(1, 0, &orthoProjection, sizeof(glm::mat4));
 		}
 		else if (batch.TextureId == 2)
 		{
+			if (!impl.RoundedBoxPipelineInit)
+				continue;
 			commandList->BindPipeline(impl.RoundedBoxPipeline);
 			commandList->BindGlobalSet();
 
@@ -710,6 +681,8 @@ void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4&
 		}
 		else if (batch.TextureId == 1)
 		{
+			if (!impl.TextPipelineInit)
+				continue;
 			commandList->BindPipeline(impl.TextPipeline);
 			commandList->BindGlobalSet();
 

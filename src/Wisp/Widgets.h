@@ -35,7 +35,9 @@ template<typename T> class WidgetRef;
 #include "Wisp/Components/LineGraph.h"
 #include "Wisp/Components/BarChart.h"
 #include "Wisp/Components/Sparkline.h"
+#if !defined(TE_CONF_DIST)
 #include "Wisp/Components/WidgetReflector.h"
+#endif // !TE_CONF_DIST
 #include "Wisp/Components/Separator.h"
 #include "Wisp/Components/Throbber.h"
 #include "Wisp/Components/RadioButtons.h"

@@ -22,6 +22,10 @@ public:
 
 	// Must be called before the Vulkan device is destroyed.
 	void Shutdown();
+	// Shader hot reload - rebuilds the matching UI shader pair
+	// (ui_rect/ui_text/ui_image/ui_roundedbox). Returns true when the path
+	// names one of them.
+	bool ReloadShader(const std::string& assetPath);
 
 	// One per OS window: owns that window's staging buffers and holds
 	// the command buffer/viewport it is currently being recorded into, so

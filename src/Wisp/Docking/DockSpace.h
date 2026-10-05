@@ -16,7 +16,9 @@
 #include "Wisp/Components/Button.h"
 #include "Wisp/Components/TextBlock.h"
 #include "Wisp/Components/SizeBox.h"
+#if !defined(TE_CONF_DIST)
 #include "Wisp/Components/WidgetReflector.h"
+#endif // !TE_CONF_DIST
 #include "TinyEngine/Core/Application.h"
 #include "TinyEngine/Core/Log.h"
 #include <cstring>

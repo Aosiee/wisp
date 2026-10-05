@@ -16,11 +16,12 @@ FontCache::FontCache()
 
 FontCache::~FontCache() = default;
 
-FontHandle FontCache::AddFont(const uint8_t* ttfData, size_t ttfSize)
+FontHandle FontCache::AddFont(const uint8_t* ttfData, size_t ttfSize, const std::string& sourcePath)
 {
 	FontFace face;
 	face.TtfData.assign(ttfData, ttfData + ttfSize);
 	face.StbFontOffset = 0;
+	face.SourcePath = sourcePath;
 
 	// Validate the font
 	stbtt_fontinfo info;
@@ -30,6 +31,46 @@ FontHandle FontCache::AddFont(const uint8_t* ttfData, size_t ttfSize)
 	FontHandle handle = (FontHandle)m_Faces.size();
 	m_Faces.push_back(std::move(face));
 	return handle;
+}
+
+bool FontCache::ReloadFontByPath(const std::string& sourcePath, const uint8_t* ttfData, size_t ttfSize)
+{
+	FontFace* face = nullptr;
+	FontHandle handle = InvalidFont;
+	for (FontHandle i = 0; i < (FontHandle)m_Faces.size(); i++)
+	{
+		if (!m_Faces[i].SourcePath.empty() && m_Faces[i].SourcePath == sourcePath)
+		{
+			face = &m_Faces[i];
+			handle = i;
+			break;
+		}
+	}
+	if (!face)
+		return false;
+
+	stbtt_fontinfo info;
+	if (!stbtt_InitFont(&info, ttfData, stbtt_GetFontOffsetForIndex(ttfData, 0)))
+		return false; // the new bytes are not a valid font - keep the old face
+
+	face->TtfData.assign(ttfData, ttfData + ttfSize);
+
+	// The atlas is repacked from scratch: every cached glyph (its UVs and
+	// metrics) is stale once the face's glyphs change, so the whole cache
+	// resets and the shelf state starts over. The atlas buffer stays SIZED
+	// (zeroed) - RasterizeGlyph writes into it directly.
+	m_GlyphCache.clear();
+	m_AtlasWidth = 512;
+	m_AtlasHeight = 512;
+	m_AtlasData.assign((size_t)m_AtlasWidth * m_AtlasHeight * 4, 0);
+	m_ShelfY = 0;
+	m_ShelfMaxHeight = 0;
+	m_ShelfX = 0;
+	m_AtlasDirty = true;
+	m_LayoutGeneration++;
+
+	(void)handle;
+	return true;
 }
 
 FontCache::FontFace* FontCache::GetFace(FontHandle handle)
