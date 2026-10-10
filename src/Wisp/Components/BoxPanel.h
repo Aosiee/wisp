@@ -3,6 +3,10 @@
 #include "Wisp/DrawList.h"
 
 namespace wisp {
+	template <typename T> class WidgetRef; // the SlotBuilder operator[] overloads
+}
+
+namespace wisp {
 
 // ---- BoxPanel (VerticalBox / HorizontalBox) ---------------------------------
 

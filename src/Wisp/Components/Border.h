@@ -5,6 +5,10 @@
 #include "Wisp/Style.h"
 
 namespace wisp {
+	template <typename T> class WidgetRef; // the SetChild(WidgetRef&) overload
+}
+
+namespace wisp {
 
 // ---- Border -----------------------------------------------------------------
 
