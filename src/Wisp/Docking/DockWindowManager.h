@@ -22,7 +22,8 @@ namespace wisp {
 //     position request - tiling WMs tile it)
 //   - OS windows whose node is gone are destroyed (context + window)
 //   - each window's title tracks its active tab's display name
-//   - secondary windows poll + present their own frame
+//   - secondary windows present their own frame (the event pump stays in
+//     Application::Run - one pump per frame)
 // The main window stays owned by the engine loop; its DockSpace shares
 // the same DockState and rebuilds off the shared model version.
 class DockWindowManager
@@ -98,7 +99,9 @@ public:
 			}
 		}
 
-		// 5. Poll + present each secondary window (its own frame).
+		// 5. Present each secondary window (its own frame). The EVENT pump
+		// stays in Application::Run (one pump per frame - nothing
+		// else calls glfwPollEvents), so OnUpdate only swaps buffers.
 		for (auto& [id, e] : m_Windows)
 			e->OSWindow->OnUpdate();
 	}
@@ -146,18 +149,20 @@ private:
 			TinyEngine::TrySetWindowPos((GLFWwindow*)entry->OSWindow->GetNativeWindow(), (int)w.Pos->x, (int)w.Pos->y);
 
 		// Per-window event routing: WM close is DEFERRED (this callback runs
-		// inside the window's own glfwPollEvents - destroying it here would
-		// return into SwapBuffers on freed state). Everything else routes
-		// through the shared Wisp event router, which resolves this window's
-		// context via the handle.
+		// inside the application's GLFW poll - destroying the window here
+		// would return into SwapBuffers on freed state). Everything else
+		// joins the application's single buffered event queue so every
+		// window's events dispatch at the one per-frame drain, where the
+		// Wisp layer resolves this window's context via the handle - instead
+		// of routing inline inside the callback.
 		WindowEntry* raw = entry.get();
-		entry->OSWindow->SetEventCallback([raw](TinyEngine::Event& e) {
-			if (e.GetEventType() == TinyEngine::EventType::WindowClose)
+		entry->OSWindow->SetEventCallback([raw](std::unique_ptr<TinyEngine::Event> e) {
+			if (e->GetEventType() == TinyEngine::EventType::WindowClose)
 			{
 				raw->CloseRequested = true;
 				return;
 			}
-			WispLayer::RouteEvent(e);
+			TinyEngine::Application::Get().QueueEvent(std::move(e));
 		});
 
 		// The window's Wisp root: a DockSpace projecting this node.
