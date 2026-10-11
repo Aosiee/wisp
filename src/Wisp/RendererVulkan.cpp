@@ -251,7 +251,7 @@ static void RecreateWispPipeline(WispVulkanImpl& impl, TinyEngine::rhi::ShaderHa
 	spec.VertexAttributes = std::span(WispVertexAttributes(), 3);
 	spec.PushConstantSize = pushConstantSize;
 	spec.PushConstantStages = pushConstantStages;
-	spec.ColorAttachmentFormat = TinyEngine::rhi::Format::B8G8R8A8_UNORM;
+	spec.ColorAttachmentFormats[0] = TinyEngine::rhi::Format::B8G8R8A8_UNORM;
 	spec.EnableBlend = true;
 	spec.DepthTestEnable = false;
 	spec.DepthWriteEnable = false;
@@ -287,7 +287,7 @@ bool RendererVulkan::Init(const FontCache* fontCache)
 		spec.VertexStride = sizeof(BatchedVertex);
 		spec.VertexAttributes = std::span(WispVertexAttributes(), 3);
 		spec.PushConstantSize = sizeof(glm::mat4);
-		spec.ColorAttachmentFormat = kUiColourFormat;
+		spec.ColorAttachmentFormats[0] = kUiColourFormat;
 		spec.EnableBlend = true;
 		spec.DepthTestEnable = false;
 		spec.DepthWriteEnable = false;
@@ -310,7 +310,7 @@ bool RendererVulkan::Init(const FontCache* fontCache)
 		spec.VertexAttributes = std::span(WispVertexAttributes(), 3);
 		spec.PushConstantSize = sizeof(TexturedPushConstants);
 		spec.PushConstantStages = 1 | 16; // VERTEX|FRAGMENT - the frag reads the index
-		spec.ColorAttachmentFormat = kUiColourFormat;
+		spec.ColorAttachmentFormats[0] = kUiColourFormat;
 		spec.EnableBlend = true;
 		spec.DepthTestEnable = false;
 		spec.DepthWriteEnable = false;
@@ -332,7 +332,7 @@ bool RendererVulkan::Init(const FontCache* fontCache)
 		spec.VertexStride = sizeof(BatchedVertex);
 		spec.VertexAttributes = std::span(WispVertexAttributes(), 3);
 		spec.PushConstantSize = sizeof(RoundedBoxPushConstants);
-		spec.ColorAttachmentFormat = kUiColourFormat;
+		spec.ColorAttachmentFormats[0] = kUiColourFormat;
 		spec.EnableBlend = true;
 		spec.DepthTestEnable = false;
 		spec.DepthWriteEnable = false;
@@ -355,7 +355,7 @@ bool RendererVulkan::Init(const FontCache* fontCache)
 		spec.VertexAttributes = std::span(WispVertexAttributes(), 3);
 		spec.PushConstantSize = sizeof(TexturedPushConstants);
 		spec.PushConstantStages = 1 | 16; // VERTEX|FRAGMENT
-		spec.ColorAttachmentFormat = kUiColourFormat;
+		spec.ColorAttachmentFormats[0] = kUiColourFormat;
 		spec.EnableBlend = true;
 		spec.DepthTestEnable = false;
 		spec.DepthWriteEnable = false;
