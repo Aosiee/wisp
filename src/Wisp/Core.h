@@ -286,7 +286,17 @@ class Widget
 {
 public:
 	Widget() = default;
-	virtual ~Widget() = default;
+	virtual ~Widget()
+	{
+		// The per-frame animation sets hold raw pointers (double-buffered
+		// in WindowContext); a composed-content panel that rebuilds while
+		// one of its buttons is mid hover-animation would otherwise leave
+		// a dangling entry for the next TickAnimation (the inspector's
+		// write->rebuild path exposed this - a hover + fast click on the
+		// Use-Selected arrow). The IsValid guard makes this a safe no-op
+		// once the app is gone (shutdown order either way).
+		CancelAnimationTick();
+	}
 
 	// --- Layout ---
 	virtual glm::vec2 ComputeDesiredSize() const = 0;
