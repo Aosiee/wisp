@@ -267,9 +267,11 @@ bool RendererVulkan::Init(const FontCache* fontCache)
 	impl.FontCachePtr = fontCache;
 
 	TinyEngine::rhi::Device& device = *impl.Device;
-	// The swapchain + framebuffer colour format is fixed B8G8R8A8_UNORM
-	// across the engine, so the pipelines declare it directly (no raw
-	// swapchain-info reach into Wisp).
+	// Wisp draws only into the SWAPCHAIN, whose colour format is the fixed
+	// B8G8R8A8_UNORM - the pipelines declare it directly (no raw
+	// swapchain-info reach into Wisp). Framebuffer targets' formats are
+	// the renderers' concern (they take them from the target); the UI
+	// samples framebuffers through WrapUIImageHandle's format mapping.
 	const TinyEngine::rhi::Format kUiColourFormat = TinyEngine::rhi::Format::B8G8R8A8_UNORM;
 
 	// --- Rect pipeline ---
