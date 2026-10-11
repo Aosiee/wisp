@@ -183,6 +183,13 @@ public:
 	static float GetAnimTime() { return s_Instance ? s_Instance->m_AnimTime : 0.0f; }
 	bool IsDragActive() const { return m_DragOp.has_value(); }
 
+	// The in-flight drag's operation, or nullptr when nothing is dragging.
+	// Read-only: the router owns the drag. Widgets read this at PAINT time
+	// for global feedback (e.g. a slot row dimming itself while an
+	// incompatible payload is being dragged anywhere over the app) - the
+	// enter/leave/over callbacks only reach widgets under the cursor.
+	const DragOperation* GetDragOperation() const { return m_DragOp ? &*m_DragOp : nullptr; }
+
 	// Focus navigation — global single focus; navigation operates on the
 	// FOCUSED window's registry.
 	void SetFocus(Widget* widget);
