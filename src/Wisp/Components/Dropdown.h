@@ -12,9 +12,41 @@
 
 namespace wisp {
 
-class Dropdown : public Widget
-{
-public:
+	// A hover-opened submenu row (the tree dropdown's branches).
+	class SubmenuRow : public Button
+	{
+	public:
+		WISP_WIDGET_TYPE(SubmenuRow)
+		void SetOnEntered(std::function<void()> fn) { m_OnEntered = std::move(fn); }
+		Reply OnMouseEnter() override
+		{
+			Button::OnMouseEnter();
+			if (m_OnEntered)
+				m_OnEntered();
+			return Reply::Unhandled();
+		}
+	private:
+		std::function<void()> m_OnEntered;
+	};
+
+	// The tree model (the nested view-mode sections - the | -categorized
+	// paths): the branches open the hover submenus, the leaves select.
+	struct DropdownNode
+	{
+		std::string Label;
+		std::string Value;
+		bool IsBranch = false;
+		std::vector<DropdownNode> Children;
+
+		bool operator==(const DropdownNode& other) const
+		{
+			return Label == other.Label && Value == other.Value && IsBranch == other.IsBranch && Children == other.Children;
+		}
+	};
+
+	class Dropdown : public Widget
+	{
+	public:
 	WISP_WIDGET_TYPE(Dropdown)
 
 	Dropdown(FontCache* fc, FontHandle font, float fontSize)
@@ -25,16 +57,43 @@ public:
 		m_BgStyle.Background.Tint = { 0.12f, 0.12f, 0.18f, 1.0f };
 	}
 
-		// The section-header marker (the leading \x01 byte) - such an
-		// option renders as a non-selectable dim header row in the popup
-		// (the nested view-mode sections).
-		static bool IsHeaderOption(const std::string& s) { return !s.empty() && s[0] == '\x01'; }
-		static std::string HeaderLabel(const std::string& s) { return s.substr(1); }
+	// The section-header marker (the leading \x01 byte) - such an
+	// option renders as a non-selectable dim header row in the popup
+	// (the legacy flat sections; the tree options supersede it).
+	static bool IsHeaderOption(const std::string& s) { return !s.empty() && s[0] == '\x01'; }
+	static std::string HeaderLabel(const std::string& s) { return s.substr(1); }
 
-		void SetOptions(const std::vector<std::string>& opts) { m_Options = opts; InvalidateLayout(); }
+	void SetOptions(const std::vector<std::string>& opts) { m_Options = opts; m_Nodes.clear(); InvalidateLayout(); }
+	// The tree options (the nested sections): the flat m_Options mirrors
+	// the leaves for the selected-text display, in the tree order.
+	void SetTreeOptions(const std::vector<DropdownNode>& nodes)
+	{
+		m_Nodes = nodes;
+		m_Options.clear();
+		m_NodeValues.clear();
+		for (const DropdownNode& node : m_Nodes)
+			CollectLeafLabels(node, m_Options, m_NodeValues);
+		InvalidateLayout();
+	}
 	void SetSelectedIndex(int idx) { m_SelectedIdx = idx; InvalidateLayout(); }
+	void SetSelectedValue(const std::string& value)
+	{
+		for (size_t i = 0; i < m_Options.size(); i++)
+			if (m_NodeValues[i] == value)
+			{
+				m_SelectedIdx = (int)i;
+				break;
+			}
+		InvalidateLayout();
+	}
 	int  GetSelectedIndex() const { return m_SelectedIdx; }
 	const std::string& GetSelectedText() const { return m_Options.empty() ? m_Empty : m_Options[m_SelectedIdx]; }
+	// The selected leaf's VALUE (the tree's view ID - empty for the flat
+	// options).
+	std::string GetSelectedValue() const
+	{
+		return (m_SelectedIdx >= 0 && m_SelectedIdx < (int)m_NodeValues.size()) ? m_NodeValues[m_SelectedIdx] : std::string();
+	}
 	void SetOnSelectionChanged(std::function<void(int, const std::string&)> cb) { m_OnChanged = std::move(cb); }
 
 	glm::vec2 ComputeDesiredSize() const override
@@ -99,34 +158,46 @@ public:
 	Reply OnMouseButtonDown(const glm::vec2&, int button) override
 	{
 		if (button != 0) return Reply::Unhandled();
-		if (m_Options.empty()) return Reply::Handled_();
+		if (m_Options.empty() && m_Nodes.empty()) return Reply::Handled_();
 
-		auto list = std::make_unique<VerticalBox>(BoxOrientation::Vertical);
-		for (int i = 0; i < (int)m_Options.size(); i++)
+		std::unique_ptr<Widget> list;
+		if (!m_Nodes.empty())
 		{
-			int idx = i;
-			// The section headers: a dim, non-interactive row (the nested
-			// view-mode sections) - the items below read indented.
-			if (IsHeaderOption(m_Options[i]))
+			// The tree popup (the nested sections - the branches open the
+			// hover submenus).
+			auto leafIndex = std::make_shared<int>(0);
+			list = BuildTreePopup(m_Nodes, leafIndex, m_CachedAbsX);
+		}
+		else
+		{
+			list = std::make_unique<VerticalBox>(BoxOrientation::Vertical);
+			VerticalBox* flatList = static_cast<VerticalBox*>(list.get());
+			for (int i = 0; i < (int)m_Options.size(); i++)
 			{
-				auto label = std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize * 0.85f, HeaderLabel(m_Options[i]),
-					glm::vec4(0.5f, 0.55f, 0.65f, 1.0f));
-				list->AddChild(std::move(label));
-				continue;
+				int idx = i;
+				// The section headers: a dim, non-interactive row (the
+				// legacy flat sections) - the items below read indented.
+				if (IsHeaderOption(m_Options[i]))
+				{
+					auto label = std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize * 0.85f, HeaderLabel(m_Options[i]),
+						glm::vec4(0.5f, 0.55f, 0.65f, 1.0f));
+					flatList->AddChild(std::move(label));
+					continue;
+				}
+				auto label = std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize, m_Options[i],
+					i == m_SelectedIdx ? glm::vec4(0.3f,0.7f,1.0f,1) : glm::vec4(0.8f,0.8f,0.8f,1));
+				auto row = std::make_unique<Button>();
+				row->SetNormalBrush({glm::vec4(0.08f,0.08f,0.12f,1)});
+				row->SetHoveredBrush({glm::vec4(0.15f,0.15f,0.22f,1)});
+				row->SetPressedBrush({glm::vec4(0.05f,0.05f,0.1f,1)});
+				row->SetOnClicked([this, idx]() {
+					SetSelectedIndex(idx);
+					m_OnChanged(idx, m_Options[idx]);
+					UIApplication::Get().RequestDismissPopups();
+				});
+				row->SetChild(std::move(label));
+				flatList->AddChild(std::move(row));
 			}
-			auto label = std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize, m_Options[i],
-				i == m_SelectedIdx ? glm::vec4(0.3f,0.7f,1.0f,1) : glm::vec4(0.8f,0.8f,0.8f,1));
-			auto row = std::make_unique<Button>();
-			row->SetNormalBrush({glm::vec4(0.08f,0.08f,0.12f,1)});
-			row->SetHoveredBrush({glm::vec4(0.15f,0.15f,0.22f,1)});
-			row->SetPressedBrush({glm::vec4(0.05f,0.05f,0.1f,1)});
-			row->SetOnClicked([this, idx]() {
-				SetSelectedIndex(idx);
-				m_OnChanged(idx, m_Options[idx]);
-				UIApplication::Get().RequestDismissPopups();
-			});
-			row->SetChild(std::move(label));
-			list->AddChild(std::move(row));
 		}
 
 		auto popupBorder = std::make_unique<Border>();
@@ -137,7 +208,6 @@ public:
 		auto sized = std::make_unique<SizeBox>();
 		sized->SetWidthOverride(m_CachedWidth);
 		sized->SetChild(std::move(popupBorder));
-
 		UIApplication::Get().ShowPopupAt(std::move(sized), {m_CachedAbsX, m_CachedAbsY + GetCachedDesiredSize().y});
 		return Reply::Handled_();
 	}
@@ -154,10 +224,76 @@ public:
 		return Reply::Unhandled();
 	}
 private:
+	// The recursive tree popup (the branches open the hover submenus).
+	// anchorX = the level's popup's left edge (the submenus cascade right).
+	std::unique_ptr<Widget> BuildTreePopup(const std::vector<DropdownNode>& nodes, const std::shared_ptr<int>& leafIndex, float anchorX)
+	{
+		auto list = std::make_unique<VerticalBox>(BoxOrientation::Vertical);
+		for (const DropdownNode& node : nodes)
+		{
+			if (node.IsBranch)
+			{
+				auto row = std::make_unique<SubmenuRow>();
+				row->SetNormalBrush({ glm::vec4(0.08f, 0.08f, 0.12f, 1) });
+				row->SetHoveredBrush({ glm::vec4(0.15f, 0.15f, 0.22f, 1) });
+				row->SetPressedBrush({ glm::vec4(0.05f, 0.05f, 0.1f, 1) });
+				row->SetChild(std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize, node.Label + " >",
+					glm::vec4(0.8f, 0.8f, 0.8f, 1)));
+				row->SetOnEntered([this, node, leafIndex, anchorX]() {
+					auto subList = BuildTreePopup(node.Children, leafIndex, anchorX + m_CachedWidth);
+					auto subBorder = std::make_unique<Border>();
+					subBorder->SetBrush({ glm::vec4(0.08f, 0.08f, 0.12f, 0.95f) });
+					subBorder->SetPadding(2);
+					subBorder->SetChild(std::move(subList));
+					auto sized = std::make_unique<SizeBox>();
+					sized->SetWidthOverride(m_CachedWidth);
+					sized->SetChild(std::move(subBorder));
+					// The submenu opens beside THIS level's popup (the
+					// cascade), its top at the dropdown's top + the header
+					// offset.
+					UIApplication::Get().ShowPopupAt(std::move(sized), { anchorX + m_CachedWidth, m_CachedAbsY + 26.0f });
+				});
+				list->AddChild(std::move(row));
+			}
+			else
+			{
+				const int idx = (*leafIndex)++;
+				auto label = std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize, node.Label,
+					idx == m_SelectedIdx ? glm::vec4(0.3f, 0.7f, 1.0f, 1) : glm::vec4(0.8f, 0.8f, 0.8f, 1));
+				auto row = std::make_unique<Button>();
+				row->SetNormalBrush({ glm::vec4(0.08f, 0.08f, 0.12f, 1) });
+				row->SetHoveredBrush({ glm::vec4(0.15f, 0.15f, 0.22f, 1) });
+				row->SetPressedBrush({ glm::vec4(0.05f, 0.05f, 0.1f, 1) });
+				row->SetOnClicked([this, idx, node]() {
+					SetSelectedIndex(idx);
+					m_OnChanged(idx, node.Value);
+					UIApplication::Get().RequestDismissPopups();
+				});
+				row->SetChild(std::move(label));
+				list->AddChild(std::move(row));
+			}
+		}
+		return list;
+	}
+
+	static void CollectLeafLabels(const DropdownNode& node, std::vector<std::string>& labels, std::vector<std::string>& values)
+	{
+		if (!node.IsBranch)
+		{
+			labels.push_back(node.Label);
+			values.push_back(node.Value);
+			return;
+		}
+		for (const DropdownNode& child : node.Children)
+			CollectLeafLabels(child, labels, values);
+	}
+
 	FontCache* m_FontCache;
 	FontHandle m_Font;
 	float      m_FontSize;
 	std::vector<std::string> m_Options;
+	std::vector<std::string> m_NodeValues; // the leaves' values (parallel to m_Options)
+	std::vector<DropdownNode> m_Nodes;
 	int        m_SelectedIdx = 0;
 	std::string m_Empty;
 	mutable bool m_IsHovered = false;
