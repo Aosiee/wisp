@@ -25,7 +25,13 @@ public:
 		m_BgStyle.Background.Tint = { 0.12f, 0.12f, 0.18f, 1.0f };
 	}
 
-	void SetOptions(const std::vector<std::string>& opts) { m_Options = opts; InvalidateLayout(); }
+		// The section-header marker (the leading \x01 byte) - such an
+		// option renders as a non-selectable dim header row in the popup
+		// (the nested view-mode sections).
+		static bool IsHeaderOption(const std::string& s) { return !s.empty() && s[0] == '\x01'; }
+		static std::string HeaderLabel(const std::string& s) { return s.substr(1); }
+
+		void SetOptions(const std::vector<std::string>& opts) { m_Options = opts; InvalidateLayout(); }
 	void SetSelectedIndex(int idx) { m_SelectedIdx = idx; InvalidateLayout(); }
 	int  GetSelectedIndex() const { return m_SelectedIdx; }
 	const std::string& GetSelectedText() const { return m_Options.empty() ? m_Empty : m_Options[m_SelectedIdx]; }
@@ -99,6 +105,15 @@ public:
 		for (int i = 0; i < (int)m_Options.size(); i++)
 		{
 			int idx = i;
+			// The section headers: a dim, non-interactive row (the nested
+			// view-mode sections) - the items below read indented.
+			if (IsHeaderOption(m_Options[i]))
+			{
+				auto label = std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize * 0.85f, HeaderLabel(m_Options[i]),
+					glm::vec4(0.5f, 0.55f, 0.65f, 1.0f));
+				list->AddChild(std::move(label));
+				continue;
+			}
 			auto label = std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize, m_Options[i],
 				i == m_SelectedIdx ? glm::vec4(0.3f,0.7f,1.0f,1) : glm::vec4(0.8f,0.8f,0.8f,1));
 			auto row = std::make_unique<Button>();
