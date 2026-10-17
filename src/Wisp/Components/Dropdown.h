@@ -208,7 +208,11 @@ namespace wisp {
 		auto sized = std::make_unique<SizeBox>();
 		sized->SetWidthOverride(m_CachedWidth);
 		sized->SetChild(std::move(popupBorder));
-		UIApplication::Get().ShowPopupAt(std::move(sized), {m_CachedAbsX, m_CachedAbsY + GetCachedDesiredSize().y});
+		// The popup anchors below the dropdown's own height (the cached
+		// desired size is zero until the first arrangement - the
+		// ComputeDesiredSize's floor covers the click-time case).
+		float anchorY = m_CachedAbsY + (GetCachedDesiredSize().y > 0.0f ? GetCachedDesiredSize().y : ComputeDesiredSize().y);
+		UIApplication::Get().ShowPopupAt(std::move(sized), {m_CachedAbsX, anchorY});
 		return Reply::Handled_();
 	}
 
