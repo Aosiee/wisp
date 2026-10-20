@@ -82,12 +82,18 @@ void UIApplication::Init(FontCache* fontCache)
 
 		// Per-window mouse scale (logical -> physical) and content scale.
 		GLFWwindow* win = (GLFWwindow*)context.WindowHandle;
-		int logicalW = 0, logicalH = 0;
-		glfwGetWindowSize(win, &logicalW, &logicalH);
+		int logicalW = (int)context.Width, logicalH = (int)context.Height;
+		float csx = 1.0f, csy = 1.0f;
+		// The Offscreen mode has no GLFW window - the virtual size (the
+		// render context's) stands in for the window size and the
+		// content scale stays 1.
+		if (win)
+		{
+			glfwGetWindowSize(win, &logicalW, &logicalH);
+			glfwGetWindowContentScale(win, &csx, &csy);
+		}
 		ctx->MouseScale = { logicalW > 0 ? (float)w / logicalW : 1.0f,
 		                    logicalH > 0 ? (float)h / logicalH : 1.0f };
-		float csx = 1.0f, csy = 1.0f;
-		glfwGetWindowContentScale(win, &csx, &csy);
 		ctx->ContentScale = csx;
 
 		// The batch output builds into the engine's frame arena
