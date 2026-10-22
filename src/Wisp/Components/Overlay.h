@@ -22,6 +22,10 @@ public:
 	}
 	void AddChild(std::unique_ptr<Widget> child) { SetupParentChild(this, child.get()); m_Children.push_back(std::move(child)); InvalidateLayout(); }
 	size_t GetChildCount() const { return m_Children.size(); }
+	Widget* GetChildAt(size_t i) const { return i < m_Children.size() ? m_Children[i].get() : nullptr; }
+	// Drops every child from keep onward (the popup dismissal beyond the
+	// kept canvases - the dropdown's submenu replacement).
+	void TruncateChildren(size_t keep) { if (keep < m_Children.size()) m_Children.resize(keep); }
 
 	// Slot for + syntax
 	struct OSlot

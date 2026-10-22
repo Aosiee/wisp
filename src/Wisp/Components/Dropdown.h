@@ -17,16 +17,25 @@ namespace wisp {
 	{
 	public:
 		WISP_WIDGET_TYPE(SubmenuRow)
-		void SetOnEntered(std::function<void()> fn) { m_OnEntered = std::move(fn); }
+		// The enter callback receives the row's absolute position (cached
+		// at paint) so the submenu opens beside the HOVERED row, not a
+		// fixed offset.
+		void SetOnEntered(std::function<void(const glm::vec2& absPos)> fn) { m_OnEntered = std::move(fn); }
 		Reply OnMouseEnter() override
 		{
 			Button::OnMouseEnter();
 			if (m_OnEntered)
-				m_OnEntered();
+				m_OnEntered(m_CachedAbsPos);
 			return Reply::Unhandled();
 		}
+		int OnPaint(const PaintArgs& args, const Geometry& geom, DrawList& drawList, int layerId, const WidgetStyleContext& style) const override
+		{
+			m_CachedAbsPos = geom.LocalToAbsolute({ 0, 0 });
+			return Button::OnPaint(args, geom, drawList, layerId, style);
+		}
 	private:
-		std::function<void()> m_OnEntered;
+		std::function<void(const glm::vec2& absPos)> m_OnEntered;
+		mutable glm::vec2 m_CachedAbsPos{ 0.0f };
 	};
 
 	// The tree model (the nested view-mode sections - the | -categorized
@@ -166,7 +175,7 @@ namespace wisp {
 			// The tree popup (the nested sections - the branches open the
 			// hover submenus).
 			auto leafIndex = std::make_shared<int>(0);
-			list = BuildTreePopup(m_Nodes, leafIndex, m_CachedAbsX);
+			list = BuildTreePopup(m_Nodes, leafIndex, m_CachedAbsX, 1);
 		}
 		else
 		{
@@ -229,8 +238,13 @@ namespace wisp {
 	}
 private:
 	// The recursive tree popup (the branches open the hover submenus).
-	// anchorX = the level's popup's left edge (the submenus cascade right).
-	std::unique_ptr<Widget> BuildTreePopup(const std::vector<DropdownNode>& nodes, const std::shared_ptr<int>& leafIndex, float anchorX)
+	// anchorX = the level's popup's left edge (the submenus cascade
+	// right). keepCount = this level's popup depth (the main popup = 1):
+	// a branch's hover keeps the popups through ITS depth (its own
+	// ancestors) and replaces the deeper siblings - dismissing to 1
+	// unconditionally would destroy the hovered row's own submenu (the
+	// nested-branch crash).
+	std::unique_ptr<Widget> BuildTreePopup(const std::vector<DropdownNode>& nodes, const std::shared_ptr<int>& leafIndex, float anchorX, int keepCount)
 	{
 		auto list = std::make_unique<VerticalBox>(BoxOrientation::Vertical);
 		for (const DropdownNode& node : nodes)
@@ -243,8 +257,12 @@ private:
 				row->SetPressedBrush({ glm::vec4(0.05f, 0.05f, 0.1f, 1) });
 				row->SetChild(std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize, node.Label + " >",
 					glm::vec4(0.8f, 0.8f, 0.8f, 1)));
-				row->SetOnEntered([this, node, leafIndex, anchorX]() {
-					auto subList = BuildTreePopup(node.Children, leafIndex, anchorX + m_CachedWidth);
+				row->SetOnEntered([this, node, leafIndex, anchorX, keepCount](const glm::vec2& rowAbsPos) {
+					// The new submenu replaces the previously hovered one
+					// at THIS depth - the ancestor popups (the rows above
+					// this level) stay, the deeper siblings go.
+					UIApplication::Get().DismissPopupsBeyond(keepCount);
+					auto subList = BuildTreePopup(node.Children, leafIndex, anchorX + m_CachedWidth, keepCount + 1);
 					auto subBorder = std::make_unique<Border>();
 					subBorder->SetBrush({ glm::vec4(0.08f, 0.08f, 0.12f, 0.95f) });
 					subBorder->SetPadding(2);
@@ -252,16 +270,22 @@ private:
 					auto sized = std::make_unique<SizeBox>();
 					sized->SetWidthOverride(m_CachedWidth);
 					sized->SetChild(std::move(subBorder));
-					// The submenu opens beside THIS level's popup (the
-					// cascade), its top at the dropdown's top + the header
-					// offset.
-					UIApplication::Get().ShowPopupAt(std::move(sized), { anchorX + m_CachedWidth, m_CachedAbsY + 26.0f });
+					// The submenu opens beside this level's popup at the
+					// HOVERED row's height (the cascade).
+					UIApplication::Get().ShowPopupAt(std::move(sized), { anchorX + m_CachedWidth, rowAbsPos.y });
 				});
 				list->AddChild(std::move(row));
 			}
 			else
 			{
-				const int idx = (*leafIndex)++;
+				// The leaf's TREE-order index (the m_NodeValues parallel of
+				// m_Options - an open-order counter would misalign the
+				// selected row when the submenus open out of tree order).
+				int idx = -1;
+				for (size_t k = 0; k < m_NodeValues.size(); k++)
+					if (m_NodeValues[k] == node.Value) { idx = (int)k; break; }
+				if (idx < 0)
+					idx = (*leafIndex)++;
 				auto label = std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize, node.Label,
 					idx == m_SelectedIdx ? glm::vec4(0.3f, 0.7f, 1.0f, 1) : glm::vec4(0.8f, 0.8f, 0.8f, 1));
 				auto row = std::make_unique<Button>();

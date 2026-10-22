@@ -53,6 +53,10 @@ struct WindowContext
 	// and clip to it.
 	std::unique_ptr<Widget> PopupRoot;
 	int PopupContentCount = 0;
+	// The MODAL popup count (the dropdowns/menus/dialogs - not the
+	// tooltips): while > 0 a click outside every popup's content
+	// dismisses the popups instead of reaching the widget beneath.
+	int ModalPopupCount = 0;
 
 	// Cursor (GLFW cursors are per-window objects).
 	CursorType CurrentCursor = CursorType::Default;
@@ -147,9 +151,14 @@ public:
 	void SyncMousePositions();
 
 	// Popup system — window-local; the default context keeps the
-	// historical no-window signatures.
+	// historical no-window signatures. modal popups (the default -
+	// dropdowns, menus, dialogs) dismiss on an outside click and block
+	// it; non-modal ones (tooltips) paint only and never capture input.
 	void ShowPopup(std::unique_ptr<Widget> popup, WindowContext* ctx = nullptr);
-	void ShowPopupAt(std::unique_ptr<Widget> popup, const glm::vec2& screenPos, WindowContext* ctx = nullptr);
+	void ShowPopupAt(std::unique_ptr<Widget> popup, const glm::vec2& screenPos, WindowContext* ctx = nullptr, bool modal = true);
+	// Dismisses every popup beyond the first keepCount content canvases
+	// (the dropdown's submenu replacement - the main popup stays).
+	void DismissPopupsBeyond(int keepCount, WindowContext* ctx = nullptr);
 	void DismissPopups(WindowContext* ctx = nullptr);
 	bool HasOpenPopups(const WindowContext* ctx = nullptr) const;
 
@@ -212,6 +221,11 @@ public:
 	// focus/tooltip/drag reference that points inside the subtree, so
 	// DiffHoverPaths and friends never fire events on freed widgets.
 	void ClearInputReferencesTo(Widget* subtree);
+
+	// True while any mouse button is held - the
+	// per-panel rebuild gates on it (a rebuild mid-press destroys the
+	// pressed button and its mouse-up lands on nothing).
+	bool IsAnyMouseButtonDown() const;
 
 	// Drops the global focus (firing OnFocusLost) when the focused widget
 	// lives inside `subtree`. Used by whole-tree teardowns (window context

@@ -15,6 +15,8 @@
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
+#include <chrono>
+#include <unordered_set>
 
 namespace wisp {
 
@@ -448,15 +450,25 @@ void UIApplication::ShowPopup(std::unique_ptr<Widget> popup, WindowContext* ctx)
 		static_cast<Overlay*>(ctx->PopupRoot.get())->AddChild(std::move(catcher));
 	}
 	auto canvas = std::make_unique<Canvas>();
+	// The popup canvas spans the whole viewport - hit-test ONLY its
+	// arranged slot content (the dialog), never the canvas itself, or a
+	// second popup's canvas would shadow the first's content and the
+	// dialog's surroundings would swallow the hover (the dropdown
+	// submenu freeze). The outside-click dismissal is the explicit
+	// modal check in OnMouseButtonDown.
+	canvas->SetVisibility(Visibility::SelfHitTestInvisible);
 	auto& slot = canvas->AddChild(std::move(popup));
 	slot.Anchor = { 0.5f, 0.5f };
 	slot.Alignment = { 0.5f, 0.5f };
 	static_cast<Overlay*>(ctx->PopupRoot.get())->AddChild(std::move(canvas));
 	ctx->PopupContentCount++;
-	if (ctx->PopupContentCount == 1) PushFocusLayer("popup", FocusEntryPolicy::Clear);
+	ctx->ModalPopupCount++;
+	// The focus layer follows the MODAL count (a lone non-modal tooltip
+	// must not clear the keyboard focus).
+	if (ctx->ModalPopupCount == 1) PushFocusLayer("popup", FocusEntryPolicy::Clear);
 }
 
-void UIApplication::ShowPopupAt(std::unique_ptr<Widget> popup, const glm::vec2& screenPos, WindowContext* ctx)
+void UIApplication::ShowPopupAt(std::unique_ptr<Widget> popup, const glm::vec2& screenPos, WindowContext* ctx, bool modal)
 {
 	if (!ctx) ctx = GetFocusedContext();
 	if (!ctx) return;
@@ -469,20 +481,68 @@ void UIApplication::ShowPopupAt(std::unique_ptr<Widget> popup, const glm::vec2& 
 		static_cast<Overlay*>(ctx->PopupRoot.get())->AddChild(std::move(catcher));
 	}
 	auto canvas = std::make_unique<Canvas>();
+	// Content-only hit-testing (see ShowPopup) - the non-modal tooltip
+	// paints without ever capturing input.
+	canvas->SetVisibility(modal ? Visibility::SelfHitTestInvisible : Visibility::HitTestInvisible);
 	auto& slot = canvas->AddChild(std::move(popup));
 	slot.Position = screenPos;
 	static_cast<Overlay*>(ctx->PopupRoot.get())->AddChild(std::move(canvas));
 	ctx->PopupContentCount++;
-	if (ctx->PopupContentCount == 1) PushFocusLayer("popup", FocusEntryPolicy::Clear);
+	if (modal)
+	{
+		ctx->ModalPopupCount++;
+		if (ctx->ModalPopupCount == 1) PushFocusLayer("popup", FocusEntryPolicy::Clear);
+	}
+}
+
+void UIApplication::DismissPopupsBeyond(int keepCount, WindowContext* ctx)
+{
+	if (!ctx) ctx = GetFocusedContext();
+	if (!ctx || !ctx->PopupRoot) return;
+	if (keepCount >= ctx->PopupContentCount) return;
+	// Collect the removed subtrees' widgets first - after the truncation
+	// the parent chains still reach the (kept) overlay and can no longer
+	// distinguish removed from kept.
+	Overlay* overlay = static_cast<Overlay*>(ctx->PopupRoot.get());
+	std::unordered_set<Widget*> removedSet;
+	std::function<void(Widget*)> collect = [&](Widget* w) {
+		removedSet.insert(w);
+		w->ForEachChild(collect);
+	};
+	for (size_t i = (size_t)keepCount + 1; i < overlay->GetChildCount(); i++)
+		collect(overlay->GetChildAt(i));
+	// The catcher is the first overlay child; keep it + the first
+	// keepCount content canvases (the dropdown's main popup).
+	overlay->TruncateChildren((size_t)keepCount + 1);
+	ctx->PopupContentCount = keepCount;
+	ctx->ModalPopupCount = std::min(keepCount, ctx->ModalPopupCount);
+	// Drop every input reference into the removed subtrees (a pressed
+	// submenu leaf captures the mouse; the enter-driven dismissal must
+	// not leave it dangling for the next OnMouseButtonUp).
+	auto inRemoved = [&](Widget* w) { return w && removedSet.count(w) != 0; };
+	ctx->HoverPath.erase(std::remove_if(ctx->HoverPath.begin(), ctx->HoverPath.end(), inRemoved), ctx->HoverPath.end());
+	ctx->LastHoverPath.erase(std::remove_if(ctx->LastHoverPath.begin(), ctx->LastHoverPath.end(), inRemoved), ctx->LastHoverPath.end());
+	if (inRemoved(ctx->CaptureWidget))
+		ctx->CaptureWidget = nullptr;
+	if (inRemoved(m_FocusWidget))
+		m_FocusWidget = nullptr;
+	if (m_DragOp)
+	{
+		m_DragOp->CurrentPath.erase(std::remove_if(m_DragOp->CurrentPath.begin(), m_DragOp->CurrentPath.end(), inRemoved), m_DragOp->CurrentPath.end());
+		if (inRemoved(m_DragOp->CurrentTarget))
+			m_DragOp->CurrentTarget = nullptr;
+	}
 }
 
 void UIApplication::DismissPopups(WindowContext* ctx)
 {
 	if (!ctx) ctx = GetFocusedContext();
 	if (!ctx) return;
-	int popupLayers = ctx->PopupContentCount > 0 ? 1 : 0;
+	// The focus layer follows the MODAL count (the push above).
+	int popupLayers = ctx->ModalPopupCount > 0 ? 1 : 0;
 	ctx->PopupRoot.reset();
 	ctx->PopupContentCount = 0;
+	ctx->ModalPopupCount = 0;
 	ctx->TooltipShown = false;
 	m_FocusWidget = nullptr;
 	// The popup tree is gone - drop every input reference to it. HoverPath
@@ -504,7 +564,11 @@ void UIApplication::DismissPopups(WindowContext* ctx)
 bool UIApplication::HasOpenPopups(const WindowContext* ctx) const
 {
 	if (!ctx) ctx = GetFocusedContext();
-	return ctx ? ctx->PopupContentCount > 0 : false;
+	// The MODAL popups only - the tooltips are
+	// non-modal (the PopupContentCount includes them) and must not gate
+	// the editor's shortcuts (a hovering tooltip blocked Ctrl+Z/Y, the
+	// Delete, F2).
+	return ctx ? ctx->ModalPopupCount > 0 : false;
 }
 
 // ---- Input ------------------------------------------------------------------
@@ -687,7 +751,32 @@ bool UIApplication::OnMouseButtonDown(void* window, int button)
 		}
 	}
 
-	for (auto it = ctx->HoverPath.rbegin(); it != ctx->HoverPath.rend(); ++it)
+	// A click outside every modal popup's content dismisses the popups
+	// and consumes the click (the modal convention) - the hover path's
+	// widgets must not belong to the popup tree. Runs BEFORE the widget
+	// walk so the widget beneath never receives the dismissing click.
+	if (HasOpenPopups(ctx) && ctx->ModalPopupCount > 0)
+	{
+		bool hitPopupContent = false;
+		for (auto* w : ctx->HoverPath)
+		{
+			for (Widget* p = w; p; p = p->GetParent())
+				if (p == ctx->PopupRoot.get()) { hitPopupContent = true; break; }
+			if (hitPopupContent)
+				break;
+		}
+		if (!hitPopupContent)
+		{
+			DismissPopups(ctx);
+			return true;
+		}
+	}
+
+	// The handlers can erase from ctx->HoverPath (the
+	// DismissPopupsBeyond submenu replacement, the ClearInputReferencesTo)
+	// - iterate a COPY so the mutation can't invalidate the walk.
+	std::vector<Widget*> hoverPathCopy = ctx->HoverPath;
+	for (auto it = hoverPathCopy.rbegin(); it != hoverPathCopy.rend(); ++it)
 	{
 		Reply reply = (*it)->OnMouseButtonDown(ctx->MousePos, button);
 		if (reply.Handled)
@@ -710,18 +799,6 @@ bool UIApplication::OnMouseButtonDown(void* window, int button)
 			FlushPendingPopupDismiss();
 			return true;
 		}
-	}
-	// Click outside popup content → dismiss popups
-	if (HasOpenPopups(ctx) && !ctx->HoverPath.empty())
-	{
-		bool hitPopupContent = false;
-		for (auto* w : ctx->HoverPath)
-		{
-			const char* t = w->GetTypeName();
-			if (t != std::string("Overlay") && t != std::string("Border") && t != std::string("Canvas"))
-				{ hitPopupContent = true; break; }
-		}
-		if (!hitPopupContent) { DismissPopups(ctx); return false; }
 	}
 
 	// Click on empty space — clear focus
@@ -766,7 +843,10 @@ bool UIApplication::OnMouseButtonUp(void* window, int button)
 		return reply.Handled;
 	}
 
-	for (auto it = ctx->HoverPath.rbegin(); it != ctx->HoverPath.rend(); ++it)
+	// Iterate a copy (the handlers can erase from the
+	// path - the DismissPopupsBeyond cleanup).
+	std::vector<Widget*> hoverPathCopy = ctx->HoverPath;
+	for (auto it = hoverPathCopy.rbegin(); it != hoverPathCopy.rend(); ++it)
 	{
 		Reply reply = (*it)->OnMouseButtonUp(ctx->MousePos, button);
 		if (reply.Handled)
@@ -790,7 +870,8 @@ void UIApplication::OnMouseWheel(void* window, float delta)
 {
 	WindowContext* ctx = window ? GetWindowContext(window) : GetFocusedContext();
 	if (!ctx) return;
-	for (auto it = ctx->HoverPath.rbegin(); it != ctx->HoverPath.rend(); ++it)
+	std::vector<Widget*> hoverPathCopy = ctx->HoverPath;
+	for (auto it = hoverPathCopy.rbegin(); it != hoverPathCopy.rend(); ++it)
 	{
 		Reply reply = (*it)->OnMouseWheel(ctx->MousePos, delta);
 		if (reply.Handled) return;
@@ -896,7 +977,8 @@ bool UIApplication::OnKeyDown(void* window, int key, int mods)
 		else NavigateFocus(dir);
 		return true;
 	}
-	for (auto it = ctx->HoverPath.rbegin(); it != ctx->HoverPath.rend(); ++it)
+	std::vector<Widget*> hoverPathCopy = ctx->HoverPath;
+	for (auto it = hoverPathCopy.rbegin(); it != hoverPathCopy.rend(); ++it)
 	{
 		Reply reply = (*it)->OnKeyDown(key, mods);
 		if (reply.Handled) return true;
@@ -914,7 +996,8 @@ bool UIApplication::OnKeyUp(void* window, int key, int mods)
 		Reply reply = m_FocusWidget->OnKeyUp(key, mods);
 		if (reply.Handled) return true;
 	}
-	for (auto it = ctx->HoverPath.rbegin(); it != ctx->HoverPath.rend(); ++it)
+	std::vector<Widget*> hoverPathCopy = ctx->HoverPath;
+	for (auto it = hoverPathCopy.rbegin(); it != hoverPathCopy.rend(); ++it)
 	{
 		Reply reply = (*it)->OnKeyUp(key, mods);
 		if (reply.Handled) return true;
@@ -936,7 +1019,8 @@ bool UIApplication::OnTextInput(void* window, uint32_t codepoint)
 		}
 		if (reply.Handled) return true;
 	}
-	for (auto it = ctx->HoverPath.rbegin(); it != ctx->HoverPath.rend(); ++it)
+	std::vector<Widget*> hoverPathCopy = ctx->HoverPath;
+	for (auto it = hoverPathCopy.rbegin(); it != hoverPathCopy.rend(); ++it)
 	{
 		Reply reply = (*it)->OnTextInput(codepoint);
 		if (reply.Handled) return true;
@@ -1289,13 +1373,22 @@ void UIApplication::UpdateHover(WindowContext& ctx, const glm::vec2& screenPos)
 		}
 		else if (target->HasToolTip() && !ctx.TooltipShown)
 		{
-			ctx.TooltipDwell += 1.0f / 60.0f;
+			// The real elapsed frame time (the old
+			// 1/60 assumed the 60 fps - at 120 fps the tooltip popped at
+			// 0.25 s, at 30 fps at 1 s).
+			static auto s_lastTickTime = std::chrono::steady_clock::now();
+			const auto now = std::chrono::steady_clock::now();
+			const float dt = std::min(std::chrono::duration<float>(now - s_lastTickTime).count(), 0.1f);
+			s_lastTickTime = now;
+			ctx.TooltipDwell += dt;
 			if (ctx.TooltipDwell >= 0.5f)
 			{
 				auto tip = target->CreateToolTip();
 				if (tip)
 				{
-					ShowPopupAt(std::move(tip), ctx.MousePos + glm::vec2(12, 16), &ctx);
+					// Non-modal: a tooltip paints only - it never captures
+					// input and never dismisses the click beneath it.
+					ShowPopupAt(std::move(tip), ctx.MousePos + glm::vec2(12, 16), &ctx, false);
 					ctx.TooltipShown = true;
 				}
 			}
@@ -1350,11 +1443,16 @@ void UIApplication::DiffHoverPaths(WindowContext& ctx)
 		&& ctx.LastHoverPath[commonLen] == ctx.HoverPath[commonLen])
 		commonLen++;
 
-	for (size_t i = ctx.LastHoverPath.size(); i > commonLen; --i)
-		ctx.LastHoverPath[i - 1]->OnMouseLeave();
+	// Iterate COPIES - the enter handlers can erase
+	// from the paths (the DismissPopupsBeyond submenu replacement's
+	// cleanup, the ClearInputReferencesTo) mid-dispatch.
+	std::vector<Widget*> lastCopy = ctx.LastHoverPath;
+	std::vector<Widget*> hoverCopy = ctx.HoverPath;
+	for (size_t i = lastCopy.size(); i > commonLen; --i)
+		lastCopy[i - 1]->OnMouseLeave();
 
-	for (size_t i = commonLen; i < ctx.HoverPath.size(); ++i)
-		ctx.HoverPath[i]->OnMouseEnter();
+	for (size_t i = commonLen; i < hoverCopy.size(); ++i)
+		hoverCopy[i]->OnMouseEnter();
 }
 
 void UIApplication::Tick(WindowContext& ctx, uint32_t viewportWidth, uint32_t viewportHeight)
@@ -1425,7 +1523,10 @@ void UIApplication::Tick(WindowContext& ctx, uint32_t viewportWidth, uint32_t vi
 				if (e.widget == m_FocusWidget) { valid = true; break; }
 			if (!valid)
 			{
-				m_FocusWidget->OnFocusLost();
+				// The widget left the registry (a rebuild freed it) - its
+				// OnFocusLost would run on the freed memory: null WITHOUT
+				// calling (the full fix is a Widget::~Widget ->
+				// ForgetWidget(this) registration).
 				m_FocusWidget = nullptr;
 				if (!m_FocusRegistry.empty())
 				{
@@ -1837,6 +1938,16 @@ void UIApplication::ClearFocusIfInside(Widget* subtree)
 			ClearFocus();
 			return;
 		}
+}
+
+bool UIApplication::IsAnyMouseButtonDown() const
+{
+	WindowContext* ctx = GetFocusedContext();
+	if (!ctx)
+		return false;
+	for (bool down : ctx->MouseButtonDown)
+		if (down) return true;
+	return false;
 }
 
 void UIApplication::ClearInputReferencesTo(Widget* subtree)
