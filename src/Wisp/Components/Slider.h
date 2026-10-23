@@ -36,7 +36,7 @@ public:
 	glm::vec2 ComputeDesiredSize() const override { return { 200.0f, 24.0f }; }
 	void ArrangeChildren(const Geometry&, ArrangedChildren&) const override {}
 
-	int OnPaint(const PaintArgs& args, const Geometry& geom, DrawList& drawList, int layerId, const WidgetStyleContext& style) const override
+	int OnPaint(const PaintArgs& args, const Geometry& geom, DrawList& drawList, int layerId, const WidgetStyleContext&) const override
 	{
 		if (m_StyleDirty)
 		{

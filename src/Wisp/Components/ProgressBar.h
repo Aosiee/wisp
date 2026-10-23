@@ -44,7 +44,7 @@ public:
 
 	void ArrangeChildren(const Geometry&, ArrangedChildren&) const override {}
 
-	int OnPaint(const PaintArgs& args, const Geometry& geom, DrawList& drawList, int layerId, const WidgetStyleContext& style) const override
+	int OnPaint(const PaintArgs& args, const Geometry& geom, DrawList& drawList, int layerId, const WidgetStyleContext&) const override
 	{
 		if (m_StyleDirty && !m_HasUserStyle)
 		{

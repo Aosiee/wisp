@@ -28,17 +28,17 @@ namespace graph {
 
 		// The domain content inside the node (the thumbnail / the type
 		// badge); the canvas owns the shell, the title, the subtitle.
-		virtual void PaintNodeContent(DrawList& dl, int layerId, int clipIndex,
-			const glm::vec2& pos, const glm::vec2& size, const ViewNode& node, int zoomLevel) const {}
+		virtual void PaintNodeContent(DrawList&, int, int,
+			const glm::vec2&, const glm::vec2&, const ViewNode&, int) const {}
 
-		virtual std::string TooltipText(NodeId node) const { return {}; }
+		virtual std::string TooltipText(NodeId) const { return {}; }
 
-		virtual void OnClick(NodeId node) {}         // the plain click (e.g. the recenter)
-		virtual void OnActivate(NodeId node) {}      // the double-click
+		virtual void OnClick(NodeId) {}         // the plain click (e.g. the recenter)
+		virtual void OnActivate(NodeId) {}      // the double-click
 
 		// The right-click: the schema shows its own menu (the shared
 		// asset menu for the asset surfaces). The default does nothing.
-		virtual void ShowContextMenu(NodeId node, const glm::vec2& at) {}
+		virtual void ShowContextMenu(NodeId, const glm::vec2&) {}
 
 		virtual bool NodesMovable() const { return false; }
 		virtual bool PersistPositions() const { return false; }

@@ -789,7 +789,7 @@ public:
 		return m_Content->OnPaint(args, geom, drawList, layerId, cs);
 	}
 
-	Reply OnKeyDown(int key, int mods) override
+	Reply OnKeyDown(int key, int) override
 	{
 		if (key == 256)
 		{
@@ -951,7 +951,7 @@ public:
 
 	bool SupportsFocus() const override { return m_SupportsFocus; }
 
-	Reply OnKeyDown(int key, int mods) override
+	Reply OnKeyDown(int key, int) override
 	{
 		if (key == 257 || key == 32) // Enter or Space
 		{

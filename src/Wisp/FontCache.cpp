@@ -1,6 +1,13 @@
+// The vendored stb truetype impl TU is not warning-clean under -Wall
+// -Wextra; its own compilation is silenced here.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 #define STB_TRUETYPE_IMPLEMENTATION
 #define STBTT_STATIC
 #include <stb_truetype.h>
+#pragma GCC diagnostic pop
 
 #include "Wisp/FontCache.h"
 #include "TinyEngine/Core/Log.h"

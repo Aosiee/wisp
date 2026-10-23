@@ -119,7 +119,7 @@ namespace wisp {
 
 	void ArrangeChildren(const Geometry&, ArrangedChildren&) const override {}
 
-	int OnPaint(const PaintArgs& args, const Geometry& geom, DrawList& drawList, int layerId, const WidgetStyleContext& style) const override
+	int OnPaint(const PaintArgs& args, const Geometry& geom, DrawList& drawList, int layerId, const WidgetStyleContext&) const override
 	{
 		if (m_StyleDirty)
 		{
@@ -227,7 +227,7 @@ namespace wisp {
 
 	bool SupportsFocus() const override { return m_SupportsFocus; }
 	
-	Reply OnKeyDown(int key, int mods) override
+	Reply OnKeyDown(int key, int) override
 	{
 		if (key == 257 || key == 32) // Enter or Space
 		{

@@ -27,7 +27,7 @@ namespace graph {
 		virtual std::vector<NodeId> Dependencies(NodeId id) const = 0;
 		virtual std::optional<uint64_t> CookedSize(NodeId id) const = 0;
 		virtual std::string Label(NodeId id) const { return std::to_string(id); }
-		virtual glm::vec4 Colour(NodeId id) const { return { 0.4f, 0.5f, 0.6f, 1.0f }; }
+		virtual glm::vec4 Colour(NodeId) const { return { 0.4f, 0.5f, 0.6f, 1.0f }; }
 	};
 
 	struct SizeEntry

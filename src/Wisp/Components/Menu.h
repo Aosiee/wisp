@@ -34,13 +34,13 @@ public:
 
 	MenuItem& AddItem(const std::string& label, std::function<void()> onClick = nullptr)
 	{
-		m_Items.push_back({label, "", std::move(onClick)});
+		m_Items.push_back({label, "", std::move(onClick), nullptr});
 		return m_Items.back();
 	}
 
 	MenuItem& AddSeparator()
 	{
-		m_Items.push_back({"", "", nullptr});
+		m_Items.push_back({"", "", nullptr, nullptr});
 		m_Items.back().bSeparator = true;
 		return m_Items.back();
 	}
@@ -66,7 +66,7 @@ public:
 
 	void ArrangeChildren(const Geometry&, ArrangedChildren&) const override {}
 
-	int OnPaint(const PaintArgs& args, const Geometry& geom, DrawList& drawList, int layerId, const WidgetStyleContext& style) const override
+	int OnPaint(const PaintArgs& args, const Geometry& geom, DrawList& drawList, int layerId, const WidgetStyleContext&) const override
 	{
 		glm::vec2 absPos = geom.LocalToAbsolute({0, 0});
 		float w = geom.LocalSize.x;
@@ -109,7 +109,7 @@ public:
 		return rowLayer + 2;
 	}
 
-	Reply OnMouseMove(const glm::vec2& screenPos) override
+	Reply OnMouseMove(const glm::vec2&) override
 	{
 		m_CachedAbsX = 0; // updated during paint
 		return Reply::Unhandled();
@@ -150,7 +150,6 @@ public:
 		m_CachedAbsY = y;
 		m_CachedWidth = ComputeDesiredSize().x;
 		auto wrapper = std::make_unique<Border>();
-		auto menuPtr = this;
 		// We show the menu itself as a popup
 	}
 
@@ -209,7 +208,7 @@ public:
 
 	void ArrangeChildren(const Geometry&, ArrangedChildren&) const override {}
 
-	int OnPaint(const PaintArgs& args, const Geometry& geom, DrawList& drawList, int layerId, const WidgetStyleContext& style) const override
+	int OnPaint(const PaintArgs& args, const Geometry& geom, DrawList& drawList, int layerId, const WidgetStyleContext&) const override
 	{
 		glm::vec2 absPos = geom.LocalToAbsolute({0, 0});
 		float w = geom.LocalSize.x, h = geom.LocalSize.y;

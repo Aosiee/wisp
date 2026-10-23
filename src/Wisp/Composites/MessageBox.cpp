@@ -36,7 +36,7 @@ std::unique_ptr<Widget> MessageBox::BuildContent(FontCache* fc, FontHandle fh, f
 	auto size = WispNew(SSizeBox);
 	size->SetMinWidth(360.0f).SetMinHeight(200.0f);
 	size->SetChild(std::move(box));
-	return std::move(size);
+	return size;
 }
 
 void MessageBox::Show(FontCache* fc, FontHandle fh, float fs,

@@ -342,7 +342,7 @@ private:
 		return count > 0;
 	}
 
-	void DrawModeButtons(DrawList& dl, int layer, const glm::vec2& pos, float w, int clip) const
+	void DrawModeButtons(DrawList& dl, int layer, const glm::vec2& pos, float, int clip) const
 	{
 		m_ModeRects.clear();
 		auto cur = UIApplication::IsValid() ? UIApplication::Get().GetPickMode() : UIApplication::PickMode::None;

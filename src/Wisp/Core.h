@@ -12,6 +12,13 @@
 #define WISP_WIDGET_TYPE(T) \
 	const char* GetTypeName() const override { return #T; }
 
+// Theme.h declares ResolveStyle; its definition lives at the bottom of
+// this file (after the Widget class, or -Winvalid-use-of-incomplete-type)
+// - the Theme type is included up front (OUTSIDE the
+// namespace - the old placement nested every Theme symbol under
+// wisp::wisp) so the body sees it complete too.
+#include "Wisp/Theme.h"
+
 namespace wisp {
 
 enum class CursorType { Default, Hand, TextEditBeam, ResizeEW, ResizeNS, Crosshair };
@@ -307,15 +314,15 @@ public:
 		class DrawList& drawList, int layerId, const WidgetStyleContext& style) const = 0;
 
 	// --- Events ---
-	virtual Reply OnMouseButtonDown(const glm::vec2& localPos, int button) { return Reply::Unhandled(); }
-	virtual Reply OnMouseButtonUp(const glm::vec2& localPos, int button)   { return Reply::Unhandled(); }
-	virtual Reply OnMouseMove(const glm::vec2& localPos)                    { return Reply::Unhandled(); }
+	virtual Reply OnMouseButtonDown(const glm::vec2&, int) { return Reply::Unhandled(); }
+	virtual Reply OnMouseButtonUp(const glm::vec2&, int)   { return Reply::Unhandled(); }
+	virtual Reply OnMouseMove(const glm::vec2&)                    { return Reply::Unhandled(); }
 	virtual Reply OnMouseEnter()  { return Reply::Unhandled(); }
 	virtual Reply OnMouseLeave()  { return Reply::Unhandled(); }
-	virtual Reply OnMouseWheel(const glm::vec2& localPos, float delta)      { return Reply::Unhandled(); }
-	virtual Reply OnKeyDown(int key, int mods)  { return Reply::Unhandled(); }
-	virtual Reply OnKeyUp(int key, int mods)    { return Reply::Unhandled(); }
-	virtual Reply OnTextInput(uint32_t codepoint) { return Reply::Unhandled(); }
+	virtual Reply OnMouseWheel(const glm::vec2&, float)      { return Reply::Unhandled(); }
+	virtual Reply OnKeyDown(int, int)  { return Reply::Unhandled(); }
+	virtual Reply OnKeyUp(int, int)    { return Reply::Unhandled(); }
+	virtual Reply OnTextInput(uint32_t) { return Reply::Unhandled(); }
 	virtual void  OnFocusReceived()  {}
 	virtual void  OnFocusLost()      {}
 	virtual NavigationReply OnNavigation(const FocusEvent&) { return NavigationReply::Escape; }
@@ -329,7 +336,7 @@ public:
 	virtual void  OnDragDetected() {} // source notification at threshold crossing
 
 	// Animation — widgets that are animating register for per-frame ticks
-	virtual void TickAnimation(float dt) {}
+	virtual void TickAnimation(float) {}
 	void RequestAnimationTick();
 	void CancelAnimationTick();
 
@@ -348,7 +355,7 @@ public:
 	// part of it (the console band over the dock): returning true for a
 	// point removes the widget from the hit/hover test at that point, so
 	// the widgets beneath it receive the input.
-	virtual bool IsHitTestExcluded(const glm::vec2& absPoint) const { return false; }
+	virtual bool IsHitTestExcluded(const glm::vec2&) const { return false; }
 
 	bool IsEnabled() const { return m_Enabled; }
 	void SetEnabled(bool e) { m_Enabled = e; }
@@ -450,6 +457,26 @@ inline void SetupParentChild(Widget* parent, Widget* child)
 inline void ClearParent(Widget* child)
 {
 	child->m_Parent = nullptr;
+}
+
+// The ResolveStyle definition (declared in Theme.h) - here Widget is
+// complete, so the parent-chain walk parses cleanly (no
+// -Winvalid-use-of-incomplete-type).
+template<typename S, typename W>
+S ResolveStyle(const W* widget, const S& fallback)
+{
+	for (const Widget* w = widget; w; w = w->GetParent())
+	{
+		if (auto* theme = w->GetTheme().get())
+		{
+			for (const Theme* t = theme; t; t = t->GetParentTheme().get())
+			{
+				if (const S* s = t->GetStyle<S>())
+					return *s;
+			}
+		}
+	}
+	return fallback;
 }
 
 } // namespace wisp

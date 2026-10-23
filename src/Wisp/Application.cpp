@@ -1815,7 +1815,6 @@ void UIApplication::BuildFocusRegistry(WindowContext& ctx, Widget* widget, const
 	if (rootIt != m_FocusLayerRoots.end())
 		layerId = rootIt->second;
 
-	Geometry childGeom = geom;
 	if (widget->SupportsFocus())
 	{
 		glm::vec2 pos = geom.LocalToAbsolute({0, 0});
@@ -1843,7 +1842,6 @@ bool UIApplication::NavigateFocus(int direction)
 			return true;
 		if (navReply == NavigationReply::Wrap)
 		{
-			int oppDir = (direction ^ 1);
 			SetFocus(direction == 0 || direction == 2 ? m_FocusRegistry.back().widget : m_FocusRegistry[0].widget);
 			return true;
 		}
@@ -1895,7 +1893,6 @@ bool UIApplication::NavigateFocus(int direction)
 		glm::vec2 c = (e.min + e.max) * 0.5f;
 
 		float primary = isHorizontal ? c.x : c.y;
-		float curPrimary = isHorizontal ? curCenter.x : curCenter.y;
 		float farEdge = isHorizontal ? (positive ? curMax.x : curMin.x) : (positive ? curMax.y : curMin.y);
 
 		if (positive && primary <= farEdge + 1.0f) continue;

@@ -31,7 +31,7 @@ public:
 		SetSupportsFocus(true);
 		m_EditText = std::make_unique<EditableText>(fc, font, fontSize);
 		SetupParentChild(this, m_EditText.get());
-		m_EditText->SetOnTextChanged([this](const std::string& txt) {
+		m_EditText->SetOnTextChanged([this](const std::string&) {
 			m_EditTextDirty = true;
 		});
 

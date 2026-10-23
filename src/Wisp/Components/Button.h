@@ -111,14 +111,14 @@ public:
 		return Reply::Unhandled();
 	}
 
-	Reply OnMouseButtonDown(const glm::vec2& localPos, int button) override
+	Reply OnMouseButtonDown(const glm::vec2&, int button) override
 	{
 		if (button != 0) return Reply::Unhandled();
 		m_IsPressed = true;
 		return Reply::Handled_().CaptureMouse();
 	}
 
-	Reply OnMouseButtonUp(const glm::vec2& localPos, int button) override
+	Reply OnMouseButtonUp(const glm::vec2&, int button) override
 	{
 		if (button != 0) return Reply::Unhandled();
 		if (m_IsPressed && m_IsHovered && m_OnClicked)

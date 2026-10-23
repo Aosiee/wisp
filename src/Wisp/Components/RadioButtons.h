@@ -95,7 +95,7 @@ public:
 	}
 
 	bool SupportsFocus() const override { return true; }
-	Reply OnKeyDown(int key, int mods) override
+	Reply OnKeyDown(int key, int) override
 	{
 		if (key == 262 || key == 264) // right / down
 		{

@@ -57,7 +57,7 @@ public:
 	int OnPaint(const PaintArgs& args, const Geometry& geom, DrawList& drawList, int layerId, const WidgetStyleContext& style) const override
 	{
 		glm::vec2 pos = geom.LocalToAbsolute({0,0});
-		float w = geom.LocalSize.x, h = geom.LocalSize.y;
+		float h = geom.LocalSize.y;
 
 		// Paint the graph
 		ArrangedChildren arranged;

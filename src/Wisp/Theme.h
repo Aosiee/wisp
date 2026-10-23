@@ -77,22 +77,12 @@ private:
 
 // Walks widget→parent chain looking for a Theme that has style S.
 // Returns the first found, or the provided fallback.
-template<typename S>
-S ResolveStyle(const Widget* widget, const S& fallback)
-{
-	for (const Widget* w = widget; w; w = w->GetParent())
-	{
-		if (auto* theme = w->GetTheme().get())
-		{
-			for (const Theme* t = theme; t; t = t->GetParentTheme().get())
-			{
-				if (const S* s = t->GetStyle<S>())
-					return *s;
-			}
-		}
-	}
-	return fallback;
-}
+// Only DECLARED here (-Winvalid-use-of-incomplete-type): the definition
+// lives at the bottom of Core.h, after Widget is complete. The old inline
+// definition parsed Widget::GetParent() against the forward-declared
+// (incomplete) Widget.
+template<typename S, typename W = Widget>
+S ResolveStyle(const W* widget, const S& fallback);
 
 // Legacy helper — kept for Border's ResolveThemeColour usage
 glm::vec4 ResolveThemeColour(const Widget* widget, const std::string& key, const glm::vec4& fallback);

@@ -136,7 +136,7 @@ namespace graph {
 			overflow.Id = TwoSidedLayout::OverflowId(parentId, leftSide);
 			overflow.Asset = parentAsset;
 			overflow.Column = column;
-			overflow.Flags = NodeFlags::Overflow | (leftSide ? NodeFlags::OverflowLeft : 0);
+			overflow.Flags = NodeFlags::Overflow | (leftSide ? NodeFlags::OverflowLeft : NodeFlags(0));
 			overflow.Overflow = true;
 			overflow.Hidden = hidden;
 			return overflow;
@@ -322,7 +322,7 @@ namespace graph {
 					{
 						ViewEdge edge;
 						edge.Kind = EdgeKind::Hard;
-						edge.Flags = EdgeFlags::BackEdge | (leftSide ? EdgeFlags::Outgoing : 0);
+						edge.Flags = EdgeFlags::BackEdge | (leftSide ? EdgeFlags::Outgoing : EdgeFlags(0));
 						if (leftSide)
 						{
 							edge.From = occ.Id;

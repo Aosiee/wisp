@@ -62,7 +62,7 @@ public:
 
 	void ArrangeChildren(const Geometry&, ArrangedChildren&) const override {}
 
-	int OnPaint(const PaintArgs& args, const Geometry& geom, DrawList& drawList, int layerId, const WidgetStyleContext& style) const override
+	int OnPaint(const PaintArgs& args, const Geometry& geom, DrawList& drawList, int layerId, const WidgetStyleContext&) const override
 	{
 		if (m_StyleDirty)
 		{
@@ -86,7 +86,6 @@ public:
 		FontMetrics metrics = m_FontCache->GetMetrics(m_Font, m_FontSize);
 		float startX = std::floor(absPos.x + 4.0f);
 		float penX = startX, penY = absPos.y + 4.0f;
-		float startPenY = penY;
 		int   lineBreaks = 0; // count during paint for invalidation
 		float effWrap = m_AutoWrap ? geom.LocalSize.x - 8.0f : -1.0f;
 		m_CachedWrapWidth = effWrap;
@@ -442,7 +441,7 @@ public:
 	void OnFocusLost() override { m_HasFocus = false; m_Anchor = m_CaretPos; m_IsEditing = false; }
 	bool HasFocus() const { return m_HasFocus; }
 
-	NavigationReply OnNavigation(const FocusEvent& ev) override
+	NavigationReply OnNavigation(const FocusEvent&) override
 	{
 		if (HasFocus()) return NavigationReply::Stop;
 		return NavigationReply::Escape;

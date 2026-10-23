@@ -84,7 +84,6 @@ public:
 		while (p < end)
 		{
 			uint32_t cp;
-			const uint8_t* charStart = p;
 			if      ((*p & 0x80) == 0)      { cp = *p; p += 1; }
 			else if ((*p & 0xE0) == 0xC0 && p+1<end) { cp = ((*p & 0x1F)<<6)|(p[1]&0x3F); p+=2; }
 			else if ((*p & 0xF0) == 0xE0 && p+2<end) { cp = ((*p & 0x0F)<<12)|((p[1]&0x3F)<<6)|(p[2]&0x3F); p+=3; }
@@ -138,7 +137,6 @@ public:
 					while (look < end)
 					{
 						uint32_t lcp;
-						const uint8_t* ls = look;
 						if      ((*look & 0x80) == 0)      { lcp = *look; look += 1; }
 						else if ((*look & 0xE0) == 0xC0 && look+1<end) { lcp = ((*look & 0x1F)<<6)|(look[1]&0x3F); look+=2; }
 						else if ((*look & 0xF0) == 0xE0 && look+2<end) { lcp = ((*look & 0x0F)<<12)|((look[1]&0x3F)<<6)|(look[2]&0x3F); look+=3; }

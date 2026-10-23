@@ -38,7 +38,7 @@ public:
 
 	void ArrangeChildren(const Geometry&, ArrangedChildren&) const override {}
 
-	int OnPaint(const PaintArgs& args, const Geometry& geom, DrawList& drawList, int layerId, const WidgetStyleContext& style) const override
+	int OnPaint(const PaintArgs& args, const Geometry& geom, DrawList& drawList, int layerId, const WidgetStyleContext&) const override
 	{
 		if (m_StyleDirty)
 		{
@@ -80,7 +80,7 @@ public:
 
 	bool SupportsFocus() const override { return true; }
 
-	Reply OnKeyDown(int key, int mods) override
+	Reply OnKeyDown(int key, int) override
 	{
 		if (key == 32) { m_Checked = !m_Checked; if (m_OnStateChanged) m_OnStateChanged(m_Checked); return Reply::Handled_(); }
 		return Reply::Unhandled();
