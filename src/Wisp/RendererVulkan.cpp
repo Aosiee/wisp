@@ -626,15 +626,24 @@ void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4&
 
 	const uint32_t atlasIndex = TinyEngine::rhi::IsValid(impl.Atlas) ? device.GetBindlessIndex(impl.Atlas) : 0;
 
-	// One outer GPU scope for the whole UI pass, plus a stable per-batch
-	// scope per pipeline so the GPU frame debugger (and RenderDoc/NSight)
-	// attribute the UI's GPU time to the pipeline that costs it - the
-	// rounded-box SDFs, the glyph atlas text, or the sampled images.
+	// One timed GPU scope for the whole UI pass, plus a label per batch
+	// naming its pipeline (the rounded-box SDFs, the glyph atlas text, the
+	// sampled images) for RenderDoc/Nsight. The batch labels are untimed
+	// unless profiler.gpuTimeUiBatches is on: a full-width panel draws
+	// hundreds of batches, whose timestamp pairs filled the per-frame pool
+	// and left the renderer's own passes untimed .
 	commandList->BeginLabel("Wisp UI");
+	const bool timeBatches = TinyEngine::cvars::profiler_gpu_time_ui_batches.Get();
 
 	for (const auto& batch : data.Batches)
 	{
 		if (batch.IndexCount == 0) continue;
+		// A pipeline not built yet skips the batch BEFORE its label opens
+		// (a skip after it left the label stack unbalanced - F1).
+		if ((batch.TextureId == 0 && !impl.RectPipelineInit)
+			|| (batch.TextureId == 2 && !impl.RoundedBoxPipelineInit)
+			|| (batch.TextureId == 1 && !impl.TextPipelineInit))
+			continue;
 
 		// Apply scissor from clip rect (scale logical->physical)
 		if (batch.ClipIndex >= 0 && batch.ClipIndex < (int)data.ClipRects.size())
@@ -658,20 +667,16 @@ void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4&
 			batchLabel = "Wisp UI: Text Atlas";
 		else if (batch.TextureId >= 3)
 			batchLabel = "Wisp UI: Image";
-		commandList->BeginLabel(batchLabel);
+		commandList->BeginLabel(batchLabel, timeBatches);
 
 		if (batch.TextureId == 0)
 		{
-			if (!impl.RectPipelineInit)
-				continue;
 			commandList->BindPipeline(impl.RectPipeline);
 			commandList->BindGlobalSet();
 			commandList->PushConstants(1, 0, &orthoProjection, sizeof(glm::mat4));
 		}
 		else if (batch.TextureId == 2)
 		{
-			if (!impl.RoundedBoxPipelineInit)
-				continue;
 			commandList->BindPipeline(impl.RoundedBoxPipeline);
 			commandList->BindGlobalSet();
 
@@ -687,8 +692,6 @@ void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4&
 		}
 		else if (batch.TextureId == 1)
 		{
-			if (!impl.TextPipelineInit)
-				continue;
 			commandList->BindPipeline(impl.TextPipeline);
 			commandList->BindGlobalSet();
 
