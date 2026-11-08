@@ -163,23 +163,13 @@ namespace WispThreadPoolModel {
 
 	void AppendChunks(Model& model, const std::vector<std::shared_ptr<TinyEngine::ProfilerFrameChunk>>& snapshot)
 	{
-		// The flight recorder evicted old chunks (its budget FIFO-drops the
-		// oldest) - re-anchor everything (the pairing state included).
-		if ((uint32_t)snapshot.size() < model.ProcessedChunks)
-		{
-			model.ProcessedChunks = 0;
-			model.OpenBegins.clear();
-			model.WaitOpen.clear();
-			for (Lane& lane : model.Lanes)
-			{
-				lane.Zones.clear();
-				lane.Waits.clear();
-			}
-		}
-
-		for (size_t ci = model.ProcessedChunks; ci < snapshot.size(); ci++)
+		for (size_t ci = 0; ci < snapshot.size(); ci++)
 		{
 			const auto& chunk = snapshot[ci];
+			if (model.Started && chunk->FrameIndex < model.NextFrameIndex)
+				continue;
+			model.Started = true;
+			model.NextFrameIndex = chunk->FrameIndex + 1;
 
 			for (const auto& [id, name] : chunk->StringDelta)
 			{
@@ -247,7 +237,6 @@ namespace WispThreadPoolModel {
 				}
 			}
 		}
-		model.ProcessedChunks = snapshot.size();
 	}
 
 	void RebuildWindow(Model& model, uint64_t windowStartNs, uint64_t windowEndNs, double pxPerNs)

@@ -75,9 +75,11 @@ namespace WispThreadPoolModel {
 		uint64_t WindowStartNs = 0;
 		uint64_t WindowEndNs = 0;
 
-		// The incremental pairing state (persists across the rebuilds; the
-		// flight-recorder eviction re-anchors it).
-		size_t ProcessedChunks = 0;
+		// The incremental pairing state (persists across the rebuilds). The
+		// ingest cursor is the next chunk FrameIndex - never a recorder
+		// position, which shifts as the recorder evicts .
+		uint64_t NextFrameIndex = 0;
+		bool Started = false;
 		std::unordered_map<uint32_t, std::vector<std::pair<uint64_t, TinyEngine::ProfilerEvent>>> OpenBegins; // the per-thread LIFO (the begin handle -> the event)
 		std::unordered_map<uint32_t, uint64_t> WaitOpen; // the per-thread open wait (the state-0 time)
 		std::unordered_map<uint32_t, uint32_t> ThreadToLane; // the profiler thread id -> the lane index
@@ -100,8 +102,9 @@ namespace WispThreadPoolModel {
 
 	// ---- The incremental build ------------------------------------------------
 
-	// Processes the chunks appended since the last call (the zone/wait
-	// pairing into the lanes); the eviction (a shrinking snapshot) re-anchors.
+	// Processes the chunks past the model's FrameIndex cursor (the zone/wait
+	// pairing into the lanes) - a whole recorder snapshot or just the new
+	// chunks (Profiler::CollectChunksSince) both work.
 	void AppendChunks(Model& model, const std::vector<std::shared_ptr<TinyEngine::ProfilerFrameChunk>>& snapshot);
 
 	// Rebuilds the window: trims the lanes to [windowStartNs, windowEndNs],
