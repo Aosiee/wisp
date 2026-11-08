@@ -84,8 +84,12 @@ local wisp_deps = {
     },
 }
 
+-- The TE_TOOL flavor (a Wisp tool app on the engine_tool subset - see the
+-- engine plugin's flavor notes).
+local is_tool_build = config.features.tool == "1"
+
 module "wisp" {
-    sources = is_editor_build and {} or wisp_sources,
+    sources = (is_editor_build or is_tool_build) and {} or wisp_sources,
     pch = "src/tepch.h",
     public_includes = { "src" },
     private_defines = wisp_defines,
@@ -108,6 +112,30 @@ module "wisp_editor" {
         conf_shipping_define,
     },
     deps = wisp_deps,
+    flags = sanitizers.flags,
+    public_link_flags = sanitizers.link_flags,
+    cpp_std = "c++20",
+}
+
+module "wisp_tool" {
+    sources = is_tool_build and wisp_sources or {},
+    pch = "src/tepch.h",
+    public_includes = { "src" },
+    private_defines = {
+        "TE_TOOL",
+        "GLFW_INCLUDE_NONE",
+        "_CRT_SECURE_NO_WARNINGS",
+        conf_define,
+        is_linux and "TE_PLATFORM_LINUX" or "TE_PLATFORM_WINDOWS",
+        conf_shipping_define,
+    },
+    deps = {
+        public = {
+            "engine/engine_tool", "debug_draw/debug_draw",
+            "glfw/glfw", "glm/glm", "rapidjson/rapidjson", "stb/stb",
+            "vulkan_headers/vulkan_headers", "volk/volk",
+        },
+    },
     flags = sanitizers.flags,
     public_link_flags = sanitizers.link_flags,
     cpp_std = "c++20",

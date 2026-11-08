@@ -7,7 +7,12 @@
 #include "TinyEngine/Core/RhiDevice.h"
 #include "TinyEngine/Debug/Profiler.h"
 #include "TinyEngine/Asset/TinyAssetLoader.h"
+#ifndef TE_NO_RENDERER
 #include "TinyEngine/Asset/AssetManager.h"
+#else
+#include "TinyEngine/Asset/AssetPaths.h"
+#include "TinyEngine/Core/Project.h"
+#endif
 
 #include <cstring>
 #include <glm/gtc/matrix_transform.hpp>
@@ -46,8 +51,15 @@ struct StagingBuffers
 // The committed/cooked UI shaders (no runtime compile).
 static std::string WispShaderPath(const std::string& name)
 {
-	return TinyEngine::Application::Get().GetEngine().Get<TinyEngine::AssetManager>()
-		.ResolvePluginAsset("wisp", "shaders/vulkan/" + name + ".ctasset");
+	const std::string cooked = "shaders/vulkan/" + name + ".ctasset";
+	TinyEngine::Engine& engine = TinyEngine::Application::Get().GetEngine();
+#ifndef TE_NO_RENDERER
+	return engine.Get<TinyEngine::AssetManager>().ResolvePluginAsset("wisp", cooked);
+#else
+	// A TE_TOOL app has no AssetManager (and no pack): the cooked file
+	// next to the build, else the committed one.
+	return TinyEngine::AssetPaths::ResolvePluginAsset(engine.Get<TinyEngine::Project>(), nullptr, "wisp", cooked);
+#endif
 }
 
 
