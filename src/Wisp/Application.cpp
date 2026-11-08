@@ -8,6 +8,7 @@
 #include "TinyEngine/Renderer/RendererDebug.h"
 #include "Wisp/Widgets.h"
 #include "TinyEngine/Renderer/RenderPassContext.h"
+#include "TinyEngine/Renderer/GraphicsContext.h"
 #include "TinyEngine/Core/Application.h"
 #include "TinyEngine/CVar/EngineCVars.h" // for GetWindow()
 #include "TinyEngine/Memory/MemorySubsystem.h"
@@ -235,6 +236,10 @@ WindowContext* UIApplication::GetFocusedContext() const
 
 WindowContext* UIApplication::CreateWindowContext(void* window, std::unique_ptr<Widget> root, float contentScale)
 {
+	// The push_back can
+	// reallocate the list every window's draw callback walks on a record
+	// worker (GetWindowContext) - park every window's record first.
+	TinyEngine::GraphicsContext::WaitForAllWindowsRecordIdle();
 	auto ctx = std::make_unique<WindowContext>();
 	ctx->Window = window;
 	ctx->Root = std::move(root);
@@ -247,6 +252,11 @@ WindowContext* UIApplication::CreateWindowContext(void* window, std::unique_ptr<
 
 bool UIApplication::DestroyWindowContext(void* window)
 {
+	// The erase, and the dying
+	// context's RenderState delete below, run under the same park - the
+	// dying window's own in-flight record may still be inside its draw
+	// callback (the OS window and its submit thread die after this call).
+	TinyEngine::GraphicsContext::WaitForAllWindowsRecordIdle();
 	for (auto it = m_Contexts.begin(); it != m_Contexts.end(); ++it)
 	{
 		if ((*it)->Window != window) continue;
