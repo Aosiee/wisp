@@ -64,9 +64,24 @@ public:
 		}
 
 		// 2. Spawn OS windows for nodes that lack one.
+		// An Offscreen app has no
+		// OS windows to project secondary nodes into - its NullWindow has no
+		// native handle (the Wisp context key, the title and position calls
+		// below) and its no-present frame loop runs only the main window's
+		// Wisp update - so the nodes stay in the model, unprojected.
+		const bool offscreen = AppDisplayMode() == TinyEngine::DisplayMode::Offscreen;
 		for (const dock::WindowNode& w : model.Windows)
 		{
 			if (w.bMain || m_Windows.count(w.Id)) continue;
+			if (offscreen)
+			{
+				if (!m_LoggedOffscreenSkip)
+				{
+					m_LoggedOffscreenSkip = true;
+					TE_CORE_INFO(TinyEngine::LogCore, "DOCK: offscreen display mode - secondary dock windows are not opened (the layout keeps them).");
+				}
+				continue;
+			}
 			SpawnWindow(w);
 		}
 
@@ -127,6 +142,14 @@ private:
 		bool CloseRequested = false;
 	};
 
+	// The app's display mode (Windowed outside an Application - the dock
+	// tests drive the manager without one).
+	static TinyEngine::DisplayMode AppDisplayMode()
+	{
+		TinyEngine::Application* app = TinyEngine::Application::TryGet();
+		return app ? app->GetSpecification().Display : TinyEngine::DisplayMode::Windowed;
+	}
+
 	void Trace(const std::string& msg)
 	{
 		if (m_Trace)
@@ -143,8 +166,11 @@ private:
 		// editor; stacking WMs use WM defaults. Where the platform CAN
 		// place windows (X11/Windows) and the node carries a
 		// persisted/tear-out position, use it.
+		// The secondary window
+		// takes the app's display mode (a hidden run's torn-out window stays
+		// hidden; Offscreen never reaches here, see Update).
 		entry->OSWindow = TinyEngine::Window::Create(
-			TinyEngine::WindowProps(entry->Title, (uint32_t)std::max(1.0f, w.Size.x), (uint32_t)std::max(1.0f, w.Size.y)));
+			TinyEngine::WindowProps(entry->Title, (uint32_t)std::max(1.0f, w.Size.x), (uint32_t)std::max(1.0f, w.Size.y), AppDisplayMode()));
 		if (w.Pos.has_value())
 			TinyEngine::TrySetWindowPos((GLFWwindow*)entry->OSWindow->GetNativeWindow(), (int)w.Pos->x, (int)w.Pos->y);
 
@@ -199,6 +225,7 @@ private:
 	FontHandle m_Font = 0;
 	float m_FontSize = 13.0f;
 	bool m_Trace = false;
+	bool m_LoggedOffscreenSkip = false;
 
 	std::unordered_map<dock::NodeId, std::unique_ptr<WindowEntry>> m_Windows;
 };
