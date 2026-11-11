@@ -5,6 +5,7 @@
 #include "Wisp/Batcher.h"
 #include "TinyEngine/Renderer/UIImageHandle.h"
 #include "TinyEngine/Renderer/DebugDrawCommon.h" // the screen-overlay scratch's element type
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -236,8 +237,11 @@ public:
 
 	struct FocusEntry { Widget* widget; glm::vec2 min, max; int scopeId = 0; };
 	const std::vector<FocusEntry>& GetFocusRegistry() const { return m_FocusRegistry; }
-	static void EnableFocusDebugOverlay(bool enable) { s_FocusDebugOverlay = enable; }
-	static bool IsFocusDebugOverlayEnabled() { return s_FocusDebugOverlay; }
+	// Instance state, not a static (no process-global mutable state) -
+	// callers reach it through the app,
+	// UIApplication::Get().EnableFocusDebugOverlay(...).
+	void EnableFocusDebugOverlay(bool enable) { m_FocusDebugOverlay = enable; }
+	bool IsFocusDebugOverlayEnabled() const { return m_FocusDebugOverlay; }
 
 	// Focus layers
 	enum class FocusEntryPolicy { RestorePrevious, Clear, KeepCurrent };
@@ -345,7 +349,14 @@ private:
 
 	static UIApplication* s_Instance;
 
-	static bool s_FocusDebugOverlay;
+	bool m_FocusDebugOverlay = false;
+
+	// The tooltip dwell's last tick (UpdateHover; formerly a function-local
+	// static). Empty until the first dwell tick, which takes its time as
+	// the baseline - so that tick's dt is 0, as the static's first-use
+	// initialisation gave. One per app, shared by every window's context,
+	// as before. Game thread.
+	std::optional<std::chrono::steady_clock::time_point> m_TooltipLastTickTime;
 
 	// One context per OS window; [0] is the default (main) context.
 	std::vector<std::unique_ptr<WindowContext>> m_Contexts;

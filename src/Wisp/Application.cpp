@@ -22,7 +22,6 @@
 namespace wisp {
 
 UIApplication* UIApplication::s_Instance = nullptr;
-bool UIApplication::s_FocusDebugOverlay = false;
 
 UIApplication::UIApplication()  = default;
 UIApplication::~UIApplication() = default;
@@ -1390,10 +1389,11 @@ void UIApplication::UpdateHover(WindowContext& ctx, const glm::vec2& screenPos)
 			// The real elapsed frame time (the old
 			// 1/60 assumed the 60 fps - at 120 fps the tooltip popped at
 			// 0.25 s, at 30 fps at 1 s).
-			static auto s_lastTickTime = std::chrono::steady_clock::now();
 			const auto now = std::chrono::steady_clock::now();
-			const float dt = std::min(std::chrono::duration<float>(now - s_lastTickTime).count(), 0.1f);
-			s_lastTickTime = now;
+			if (!m_TooltipLastTickTime)
+				m_TooltipLastTickTime = now;
+			const float dt = std::min(std::chrono::duration<float>(now - *m_TooltipLastTickTime).count(), 0.1f);
+			m_TooltipLastTickTime = now;
 			ctx.TooltipDwell += dt;
 			if (ctx.TooltipDwell >= 0.5f)
 			{
@@ -1552,7 +1552,7 @@ void UIApplication::Tick(WindowContext& ctx, uint32_t viewportWidth, uint32_t vi
 
 		// Focus debug overlay — emitted through the debug_draw SCREEN batch
 		// (drawn after all UI; the focused widget sits at a higher layer).
-		if (s_FocusDebugOverlay)
+		if (m_FocusDebugOverlay)
 		{
 			for (auto& e : m_FocusRegistry)
 			{
