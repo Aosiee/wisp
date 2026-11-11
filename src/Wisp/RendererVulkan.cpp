@@ -629,9 +629,11 @@ void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4&
 	if (vbBytes) device.SetBufferData(staging.VB, data.Vertices.data(), vbBytes);
 	if (ibBytes) device.SetBufferData(staging.IB, data.Indices.data(), ibBytes);
 
-	// P-D: record through an adopted CommandList (the frame loop's live
-	// command buffer - no Begin/End).
-	std::unique_ptr<TinyEngine::rhi::CommandList> commandList(device.AdoptCommandBuffer(state.CommandBuffer));
+	// Record through an adopted CommandList (the frame loop's live command
+	// buffer - no Begin/End). The list records for `frameIndex` (the record
+	// pass's slot, handed in through the RenderPassContext) - its bindless-set
+	// and timestamp picks.
+	std::unique_ptr<TinyEngine::rhi::CommandList> commandList(device.AdoptCommandBuffer(state.CommandBuffer, frameIndex));
 
 	// Viewport (positive-height — sampling pass)
 	commandList->SetViewport(0.0f, 0.0f, (float)state.ViewportW, (float)state.ViewportH, 0.0f, 1.0f);

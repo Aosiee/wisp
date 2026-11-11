@@ -166,7 +166,7 @@ void UIApplication::Init(FontCache* fontCache)
 			glm::mat4 ortho = glm::ortho(0.0f, logicalW, 0.0f, logicalH, -1.0f, 1.0f);
 
 			// T-F-C: the staging slot pick keys on the frame index (the
-			// record fills it from the record index).
+			// record fills it from its pass's command-list slot).
 			app.m_Renderer->SetWindowCommandBuffer(*ctx->RenderState, context.CommandBuffer);
 			app.m_Renderer->SetWindowViewport(*ctx->RenderState, w, h);
 			app.m_Renderer->RenderBatches(batched, ortho, *ctx->RenderState, context.FrameIndex);
