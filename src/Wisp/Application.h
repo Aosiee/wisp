@@ -4,6 +4,7 @@
 #include "Wisp/DrawList.h"
 #include "Wisp/Batcher.h"
 #include "TinyEngine/Renderer/UIImageHandle.h"
+#include "TinyEngine/Renderer/DebugDrawCommon.h" // the screen-overlay scratch's element type
 #include <functional>
 #include <memory>
 #include <optional>
@@ -388,6 +389,11 @@ private:
 	// Animation
 	double m_LastTime = 0.0;
 	float  m_AnimTime = 0.0f;
+
+	// The debug-draw screen sub-batch's per-frame build scratch (Init's
+	// update callback; a member, not a function-local static). Game thread
+	// only; reused for its capacity.
+	std::vector<TinyEngine::DebugDrawVertex> m_ScreenOverlayScratch;
 };
 
 } // namespace wisp

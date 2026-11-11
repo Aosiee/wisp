@@ -125,7 +125,11 @@ void UIApplication::Init(FontCache* fontCache)
 		// primitives (focus overlay, reflector highlights) - recorded by
 		// the engine after ALL UI.
 		{
-			static std::vector<TinyEngine::DebugDrawVertex> screenVerts;
+			// The per-frame scratch is an app member, not a function-local
+			// static (no process-global mutable state) - the submit copies the
+			// vertices, so only the capacity carries over. Game thread (every
+			// window's update runs here in turn).
+			std::vector<TinyEngine::DebugDrawVertex>& screenVerts = app.m_ScreenOverlayScratch;
 			screenVerts.clear();
 			debug_draw::BuildScreen({ (float)logicalW, (float)logicalH }, screenVerts);
 			TinyEngine::DebugDrawVertices geometry;
