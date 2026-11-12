@@ -109,17 +109,17 @@ struct WispVulkanImpl
 	const FontCache* FontCachePtr = nullptr;
 };
 
-// Per-window transient state: staging buffers, the command buffer the
-// window is being recorded into, and its viewport. One per WindowContext;
-// the shared WispVulkanImpl holds everything windows reuse. The staging
-// buffers are per-frame-slot: with only two frames in flight, frame N+1's
-// fence wait only covers frame N-1, so a single shared pair was being
-// overwritten while frame N's GPU read of it could still be in flight (a
-// HOST-write -> GPU-read race that tears the UI geometry during interaction).
+// Per-window transient state: staging buffers and the viewport the window
+// is being recorded into (the command list is the pass's, handed to
+// RenderBatches). One per WindowContext; the shared WispVulkanImpl holds
+// everything windows reuse. The staging buffers are per-frame-slot: with
+// only two frames in flight, frame N+1's fence wait only covers frame N-1,
+// so a single shared pair was being overwritten while frame N's GPU read of
+// it could still be in flight (a HOST-write -> GPU-read race that tears the
+// UI geometry during interaction).
 struct WispWindowRenderState
 {
 	StagingBuffers          Staging[2];
-	void*                   CommandBuffer = nullptr;
 	uint32_t                ViewportW = 1920;
 	uint32_t                ViewportH = 1080;
 };
@@ -130,11 +130,6 @@ RendererVulkan::RendererVulkan()
 	: m_Impl(std::make_unique<WispVulkanImpl>()), m_DefaultState(std::make_unique<WispWindowRenderState>()) {}
 RendererVulkan::~RendererVulkan() { Shutdown(); }
 
-void RendererVulkan::SetCommandBuffer(void* commandBuffer)
-{
-	m_DefaultState->CommandBuffer = commandBuffer;
-}
-
 void RendererVulkan::SetViewportSize(uint32_t width, uint32_t height)
 {
 	m_DefaultState->ViewportW = width;
@@ -144,11 +139,6 @@ void RendererVulkan::SetViewportSize(uint32_t width, uint32_t height)
 WispWindowRenderState* RendererVulkan::CreateWindowState()
 {
 	return new WispWindowRenderState();
-}
-
-void RendererVulkan::SetWindowCommandBuffer(WispWindowRenderState& state, void* commandBuffer)
-{
-	state.CommandBuffer = commandBuffer;
 }
 
 void RendererVulkan::SetWindowViewport(WispWindowRenderState& state, uint32_t width, uint32_t height)
@@ -574,9 +564,9 @@ uint64_t RendererVulkan::WrapUIImageHandle(const TinyEngine::UIImageHandle& hand
 	return id;
 }
 
-void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4& orthoProjection)
+void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4& orthoProjection, TinyEngine::rhi::CommandList& commandList)
 {
-	RenderBatches(data, orthoProjection, *m_DefaultState, 0);
+	RenderBatches(data, orthoProjection, *m_DefaultState, commandList);
 }
 
 void RendererVulkan::EnsureFrameResources(const BatchedDrawData& data, WispWindowRenderState& state, uint32_t frameIndex)
@@ -604,11 +594,13 @@ void RendererVulkan::EnsureFrameResources(const BatchedDrawData& data, WispWindo
 	EnsureStagingBuffers(impl, staging, vbBytes, ibBytes);
 }
 
-void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4& orthoProjection, WispWindowRenderState& state, uint32_t frameIndex)
+void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4& orthoProjection, WispWindowRenderState& state, TinyEngine::rhi::CommandList& commandList)
 {
 	WispVulkanImpl& impl = *m_Impl;
-	if (!impl.Device || !state.CommandBuffer || data.Vertices.empty() || !impl.RectPipelineInit)
+	if (!impl.Device || data.Vertices.empty() || !impl.RectPipelineInit)
 		return;
+
+	const uint32_t frameIndex = commandList.FrameSlot();
 
 	TinyEngine::rhi::Device& device = *impl.Device;
 
@@ -631,14 +623,15 @@ void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4&
 	if (vbBytes) device.SetBufferData(staging.VB, data.Vertices.data(), vbBytes);
 	if (ibBytes) device.SetBufferData(staging.IB, data.Indices.data(), ibBytes);
 
-	// Record through an adopted CommandList (the frame loop's live command
-	// buffer - no Begin/End). The list records for `frameIndex` (the record
-	// pass's slot, handed in through the RenderPassContext) - its bindless-set
-	// and timestamp picks.
-	std::unique_ptr<TinyEngine::rhi::CommandList> commandList(device.AdoptCommandBuffer(state.CommandBuffer, frameIndex));
+	// Record straight into the pass's list (already recording - no
+	// Begin/End; its slot picks the bindless set and the timestamp pool).
+	// The list may track a bound layout from earlier calls in the pass:
+	// every batch below binds its pipeline before its
+	// BindGlobalSet/PushConstants (the viewport, scissor and labels need
+	// no layout), so nothing reads a stale one.
 
 	// Viewport (positive-height — sampling pass)
-	commandList->SetViewport(0.0f, 0.0f, (float)state.ViewportW, (float)state.ViewportH, 0.0f, 1.0f);
+	commandList.SetViewport(0.0f, 0.0f, (float)state.ViewportW, (float)state.ViewportH, 0.0f, 1.0f);
 
 	const uint32_t atlasIndex = TinyEngine::rhi::IsValid(impl.Atlas) ? device.GetBindlessIndex(impl.Atlas) : 0;
 
@@ -648,7 +641,7 @@ void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4&
 	// unless profiler.gpuTimeUiBatches is on: a full-width panel draws
 	// hundreds of batches, whose timestamp pairs filled the per-frame pool
 	// and left the renderer's own passes untimed .
-	commandList->BeginLabel("Wisp UI");
+	commandList.BeginLabel("Wisp UI");
 	const bool timeBatches = TinyEngine::cvars::profiler_gpu_time_ui_batches.Get();
 
 	for (const auto& batch : data.Batches)
@@ -668,12 +661,12 @@ void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4&
 			// The logical clip rects convert to the physical
 			// scissor (the DPI scale + the UI scale).
 			const float clipScale = data.DpiScale * TinyEngine::cvars::ui_scale.Get();
-			commandList->SetScissor((int32_t)(cr.x * clipScale), (int32_t)(cr.y * clipScale),
+			commandList.SetScissor((int32_t)(cr.x * clipScale), (int32_t)(cr.y * clipScale),
 				(uint32_t)(cr.z * clipScale), (uint32_t)(cr.w * clipScale));
 		}
 		else
 		{
-			commandList->SetScissor(0, 0, state.ViewportW, state.ViewportH);
+			commandList.SetScissor(0, 0, state.ViewportW, state.ViewportH);
 		}
 
 		const char* batchLabel = "Wisp UI: Rect";
@@ -683,18 +676,18 @@ void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4&
 			batchLabel = "Wisp UI: Text Atlas";
 		else if (batch.TextureId >= 3)
 			batchLabel = "Wisp UI: Image";
-		commandList->BeginLabel(batchLabel, timeBatches);
+		commandList.BeginLabel(batchLabel, timeBatches);
 
 		if (batch.TextureId == 0)
 		{
-			commandList->BindPipeline(impl.RectPipeline);
-			commandList->BindGlobalSet();
-			commandList->PushConstants(1, 0, &orthoProjection, sizeof(glm::mat4));
+			commandList.BindPipeline(impl.RectPipeline);
+			commandList.BindGlobalSet();
+			commandList.PushConstants(1, 0, &orthoProjection, sizeof(glm::mat4));
 		}
 		else if (batch.TextureId == 2)
 		{
-			commandList->BindPipeline(impl.RoundedBoxPipeline);
-			commandList->BindGlobalSet();
+			commandList.BindPipeline(impl.RoundedBoxPipeline);
+			commandList.BindGlobalSet();
 
 			RoundedBoxPushConstants pc;
 			pc.projection = orthoProjection;
@@ -704,17 +697,17 @@ void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4&
 			pc.halfSize[0] = batch.Sdf.Size[0] * 0.5f;
 			pc.halfSize[1] = batch.Sdf.Size[1] * 0.5f;
 			pc._pad2[0] = 0; pc._pad2[1] = 0;
-			commandList->PushConstants(1, 0, &pc, sizeof(pc));
+			commandList.PushConstants(1, 0, &pc, sizeof(pc));
 		}
 		else if (batch.TextureId == 1)
 		{
-			commandList->BindPipeline(impl.TextPipeline);
-			commandList->BindGlobalSet();
+			commandList.BindPipeline(impl.TextPipeline);
+			commandList.BindGlobalSet();
 
 			TexturedPushConstants pc;
 			pc.projection = orthoProjection;
 			pc.texIndex = atlasIndex;
-			commandList->PushConstants(1 | 16, 0, &pc, sizeof(pc));
+			commandList.PushConstants(1 | 16, 0, &pc, sizeof(pc));
 		}
 		else
 		{
@@ -724,30 +717,30 @@ void RendererVulkan::RenderBatches(const BatchedDrawData& data, const glm::mat4&
 			{
 				// Keep the pixel-correct fallback for a dangling texture id:
 				// draw the quad as solid colour through the rect pipeline.
-				commandList->BindPipeline(impl.RectPipeline);
-				commandList->BindGlobalSet();
-				commandList->PushConstants(1, 0, &orthoProjection, sizeof(glm::mat4));
+				commandList.BindPipeline(impl.RectPipeline);
+				commandList.BindGlobalSet();
+				commandList.PushConstants(1, 0, &orthoProjection, sizeof(glm::mat4));
 			}
 			else
 			{
-				commandList->BindPipeline(impl.ImagePipeline);
-				commandList->BindGlobalSet();
+				commandList.BindPipeline(impl.ImagePipeline);
+				commandList.BindGlobalSet();
 
 				TexturedPushConstants pc;
 				pc.projection = orthoProjection;
 				pc.texIndex = device.GetBindlessIndex(texIt->second.Handle);
-				commandList->PushConstants(1 | 16, 0, &pc, sizeof(pc));
+				commandList.PushConstants(1 | 16, 0, &pc, sizeof(pc));
 			}
 		}
 
-		commandList->BindVertexBuffer(staging.VB, 0);
-		commandList->BindIndexBuffer(staging.IB, 0);
-		commandList->DrawIndexed(batch.IndexCount, 1, batch.IndexOffset, 0, 0);
+		commandList.BindVertexBuffer(staging.VB, 0);
+		commandList.BindIndexBuffer(staging.IB, 0);
+		commandList.DrawIndexed(batch.IndexCount, 1, batch.IndexOffset, 0, 0);
 
-		commandList->EndLabel();
+		commandList.EndLabel();
 	}
 
-	commandList->EndLabel();
+	commandList.EndLabel();
 }
 
 } // namespace wisp

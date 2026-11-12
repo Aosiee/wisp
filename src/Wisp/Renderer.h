@@ -7,6 +7,8 @@
 
 #include "TinyEngine/Renderer/UIImageHandle.h"
 
+namespace TinyEngine::rhi { class CommandList; }
+
 namespace wisp {
 
 // ---- Batched Draw Data -----------------------------------------------------
@@ -70,8 +72,9 @@ public:
 	// Destroy a texture.
 	virtual void DestroyTexture(uint64_t handle) = 0;
 
-	// Submit batched draw data for rendering. Called once per frame.
-	virtual void RenderBatches(const BatchedDrawData& data, const glm::mat4& orthoProjection) = 0;
+	// Record batched draw data into the pass's command list (its
+	// FrameSlot() is the record slot). Called once per frame.
+	virtual void RenderBatches(const BatchedDrawData& data, const glm::mat4& orthoProjection, TinyEngine::rhi::CommandList& commandList) = 0;
 };
 
 } // namespace wisp

@@ -64,7 +64,7 @@ void UIApplication::Init(FontCache* fontCache)
 	// SwapBuffers (tick + paint + batch build + staging/atlas
 	// pre-creation + the screen-overlay submit); the draw callback
 	// below then records only, on a Loom worker.
-	hooks.SetWispUpdate([](const TinyEngine::RenderPassContext& context) {
+	hooks.SetWispUpdate([](const TinyEngine::FrameUpdateContext& context) {
 		UIApplication& app = Get();
 
 		WindowContext* ctx = app.GetWindowContext(context.WindowHandle);
@@ -145,10 +145,10 @@ void UIApplication::Init(FontCache* fontCache)
 	});
 
 	// Register draw callback — Wisp handles its own rendering, per window.
-	// The context is backend-neutral: the command buffer travels as an
-	// opaque handle into RendererVulkan (the backend), the window handle
-	// resolves the per-window context. Record-only: the update above owns
-	// the tick/paint.
+	// The context is backend-neutral: Wisp records into the pass's command
+	// list it carries (its FrameSlot() is
+	// the record slot), the window handle resolves the per-window context.
+	// Record-only: the update above owns the tick/paint.
 	hooks.SetWispDraw([](const TinyEngine::RenderPassContext& context) {
 		UIApplication& app = Get();
 
@@ -166,16 +166,15 @@ void UIApplication::Init(FontCache* fontCache)
 		const float logicalW = (float)w / uiScale;
 		const float logicalH = (float)h / uiScale;
 
-		const BatchedDrawData& batched = ctx->LastBatches[context.FrameIndex % 2];
+		const BatchedDrawData& batched = ctx->LastBatches[context.CommandList.FrameSlot() % 2];
 		if (!batched.Vertices.empty())
 		{
 			glm::mat4 ortho = TinyEngine::Math::Orthographic(0.0f, logicalW, 0.0f, logicalH, -1.0f, 1.0f);
 
-			// T-F-C: the staging slot pick keys on the frame index (the
-			// record fills it from its pass's command-list slot).
-			app.m_Renderer->SetWindowCommandBuffer(*ctx->RenderState, context.CommandBuffer);
+			// T-F-C: the staging slot pick keys on the list's frame slot
+			// (the update's extract index for the same frame).
 			app.m_Renderer->SetWindowViewport(*ctx->RenderState, w, h);
-			app.m_Renderer->RenderBatches(batched, ortho, *ctx->RenderState, context.FrameIndex);
+			app.m_Renderer->RenderBatches(batched, ortho, *ctx->RenderState, context.CommandList);
 		}
 	});
 }
