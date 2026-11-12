@@ -14,6 +14,7 @@
 #include "Wisp/Components/Border.h"
 #include "Wisp/Components/ValueBox.h"
 #include "Wisp/Components/EditableText.h"
+#include "assetio/ImageDecode.h" // every decode states its orientation
 #include "stb_image.h"
 #include <algorithm>
 #include <cstdio>
@@ -75,7 +76,7 @@ inline glm::vec4 SampleScreenPixelAtCursor()
 	if (std::system(cmd) != 0) return fallback;
 
 	int w = 0, h = 0, n = 0;
-	unsigned char* data = stbi_load("/tmp/wisp_eyedrop.png", &w, &h, &n, 4);
+	unsigned char* data = TinyEngine::DecodeImageFile8("/tmp/wisp_eyedrop.png", &w, &h, &n, 4, TinyEngine::ImageOrientation::AsStored);
 	if (!data) return fallback;
 	glm::vec4 col{ data[0] / 255.0f, data[1] / 255.0f, data[2] / 255.0f, data[3] / 255.0f };
 	stbi_image_free(data);

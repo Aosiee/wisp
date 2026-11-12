@@ -4,11 +4,6 @@
 
 namespace wisp {
 
-Brush MessageBox::BackgroundBrush  = { glm::vec4(0.06f, 0.06f, 0.12f, 0.97f) };
-Brush MessageBox::ButtonNormal     = { glm::vec4(0.15f, 0.15f, 0.22f, 1.0f) };
-Brush MessageBox::ButtonHover      = { glm::vec4(0.22f, 0.22f, 0.30f, 1.0f) };
-Brush MessageBox::ButtonPressed    = { glm::vec4(0.10f, 0.10f, 0.16f, 1.0f) };
-
 static WidgetRef<SButton> MakeModalButton(FontCache* fc, FontHandle fh, float fs,
 	const std::string& label, std::function<void()> onClick)
 {

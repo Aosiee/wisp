@@ -37,10 +37,13 @@ public:
 		std::function<void()> onConfirm,
 		std::function<void()> onDecline = nullptr);
 
-	// Base brush for the modal background
-	static Brush BackgroundBrush;
+	// Base brush for the modal background constants (they were writable
+	// statics nothing ever wrote).
+	static constexpr Brush BackgroundBrush{ glm::vec4(0.06f, 0.06f, 0.12f, 0.97f) };
 	// Button brushes (shared defaults)
-	static Brush ButtonNormal, ButtonHover, ButtonPressed;
+	static constexpr Brush ButtonNormal{ glm::vec4(0.15f, 0.15f, 0.22f, 1.0f) };
+	static constexpr Brush ButtonHover{ glm::vec4(0.22f, 0.22f, 0.30f, 1.0f) };
+	static constexpr Brush ButtonPressed{ glm::vec4(0.10f, 0.10f, 0.16f, 1.0f) };
 
 private:
 	static std::unique_ptr<Widget> BuildContent(FontCache* fc, FontHandle fh, float fontSize,

@@ -10,6 +10,7 @@
 #include "TinyEngine/Renderer/RenderPassContext.h"
 #include "TinyEngine/Renderer/GraphicsContext.h"
 #include "TinyEngine/Core/Application.h"
+#include "TinyEngine/Core/RhiDevice.h"
 #include "TinyEngine/CVar/EngineCVars.h" // for GetWindow()
 #include "TinyEngine/Memory/MemorySubsystem.h"
 #include "TinyEngine/Core/Input.h"
@@ -54,11 +55,15 @@ void UIApplication::Init(FontCache* fontCache)
 	s_Instance->m_FocusedContext = ctx.get();
 	s_Instance->m_Contexts.push_back(std::move(ctx));
 
+	// The hooks are the RhiDevice subsystem's (registered here on the
+	// game thread, cleared in Shutdown).
+	TinyEngine::FrameDrawHooks& hooks = TinyEngine::Application::Get().GetEngine().Get<TinyEngine::RhiDevice>().GetFrameDrawHooks();
+
 	// T-F-B.3: the update runs on the main thread at the top of
 	// SwapBuffers (tick + paint + batch build + staging/atlas
 	// pre-creation + the screen-overlay submit); the draw callback
 	// below then records only, on a Loom worker.
-	TinyEngine::SetWispUpdateCallback([](const TinyEngine::RenderPassContext& context) {
+	hooks.SetWispUpdate([](const TinyEngine::RenderPassContext& context) {
 		UIApplication& app = Get();
 
 		WindowContext* ctx = app.GetWindowContext(context.WindowHandle);
@@ -143,7 +148,7 @@ void UIApplication::Init(FontCache* fontCache)
 	// opaque handle into RendererVulkan (the backend), the window handle
 	// resolves the per-window context. Record-only: the update above owns
 	// the tick/paint.
-	TinyEngine::SetWispDrawCallback([](const TinyEngine::RenderPassContext& context) {
+	hooks.SetWispDraw([](const TinyEngine::RenderPassContext& context) {
 		UIApplication& app = Get();
 
 		WindowContext* ctx = app.GetWindowContext(context.WindowHandle);
@@ -198,8 +203,11 @@ bool UIApplication::ReloadFont(const std::string& assetPath)
 void UIApplication::Shutdown()
 {
 	if (!s_Instance) return;
-	TinyEngine::SetWispUpdateCallback(nullptr);
-	TinyEngine::SetWispDrawCallback(nullptr);
+	{
+		TinyEngine::FrameDrawHooks& hooks = TinyEngine::Application::Get().GetEngine().Get<TinyEngine::RhiDevice>().GetFrameDrawHooks();
+		hooks.SetWispUpdate(nullptr);
+		hooks.SetWispDraw(nullptr);
+	}
 
 	// Per-window render state and roots must die before the renderer (they
 	// hold device resources), and the renderer before device shutdown.
