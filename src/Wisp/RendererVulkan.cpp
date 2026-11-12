@@ -193,6 +193,7 @@ static void EnsureStagingBuffers(WispVulkanImpl& impl, StagingBuffers& s, uint32
 		TinyEngine::rhi::BufferDesc desc;
 		desc.Size = vbBytes;
 		desc.HostVisible = true;
+		desc.Usage = TinyEngine::rhi::BufferUsage::Vertex | TinyEngine::rhi::BufferUsage::Index | TinyEngine::rhi::BufferUsage::TransferDst; // the old fixed flags
 		s.VB = device.CreateBuffer(desc, "Wisp UI Vertex Staging");
 		s.VBCapacity = vbBytes;
 	}
@@ -204,6 +205,7 @@ static void EnsureStagingBuffers(WispVulkanImpl& impl, StagingBuffers& s, uint32
 		TinyEngine::rhi::BufferDesc desc;
 		desc.Size = ibBytes;
 		desc.HostVisible = true;
+		desc.Usage = TinyEngine::rhi::BufferUsage::Vertex | TinyEngine::rhi::BufferUsage::Index | TinyEngine::rhi::BufferUsage::TransferDst; // the old fixed flags
 		s.IB = device.CreateBuffer(desc, "Wisp UI Index Staging");
 		s.IBCapacity = ibBytes;
 	}
