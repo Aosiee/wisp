@@ -1,6 +1,7 @@
 #include "Wisp/Application.h"
 #include "Wisp/Batcher.h"
 #include "Wisp/RendererVulkan.h"
+#include "Math/Projection.h" // the one ortho convention
 #include "TinyEngine/Core/HotReloadClient.h"
 #include "TinyEngine/Asset/TinyAssetLoader.h"
 #include "DebugDraw.h"
@@ -168,7 +169,7 @@ void UIApplication::Init(FontCache* fontCache)
 		const BatchedDrawData& batched = ctx->LastBatches[context.FrameIndex % 2];
 		if (!batched.Vertices.empty())
 		{
-			glm::mat4 ortho = glm::ortho(0.0f, logicalW, 0.0f, logicalH, -1.0f, 1.0f);
+			glm::mat4 ortho = TinyEngine::Math::Orthographic(0.0f, logicalW, 0.0f, logicalH, -1.0f, 1.0f);
 
 			// T-F-C: the staging slot pick keys on the frame index (the
 			// record fills it from its pass's command-list slot).
