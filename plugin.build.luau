@@ -24,7 +24,7 @@
 plugin "wisp" {
     enabled_by_default = false,
     public_deps = {
-        "engine", "debug_draw",
+        "engine", "debug_draw", "math",
         "glfw", "glm", "rapidjson", "stb", "stb_image", "vulkan_headers", "volk",
     },
 }
@@ -78,7 +78,7 @@ local wisp_defines = {
 
 local wisp_deps = {
     public = {
-        "engine/engine", "debug_draw/debug_draw",
+        "engine/engine", "debug_draw/debug_draw", "math/math",
         "glfw/glfw", "glm/glm", "rapidjson/rapidjson", "stb/stb",
         "vulkan_headers/vulkan_headers", "volk/volk",
     },
@@ -131,7 +131,7 @@ module "wisp_tool" {
     },
     deps = {
         public = {
-            "engine/engine_tool", "debug_draw/debug_draw",
+            "engine/engine_tool", "debug_draw/debug_draw", "math/math",
             "glfw/glfw", "glm/glm", "rapidjson/rapidjson", "stb/stb",
             "vulkan_headers/vulkan_headers", "volk/volk",
         },

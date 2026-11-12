@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Math/Colour.h"
+
 #include <glm/glm.hpp>
 #include <cctype>
 #include <cmath>
@@ -10,48 +12,11 @@
 namespace wisp {
 
 // ---- HSV conversion --------------------------------------------------------
+// the HSV <-> RGB conversions live in Math/Colour.h; the CMYK and hex
+// conversions below are the picker's own.
 
-inline glm::vec3 RgbToHsv(const glm::vec3& rgb)
-{
-	float r = rgb.r, g = rgb.g, b = rgb.b;
-	float maxC = std::max(r, std::max(g, b));
-	float minC = std::min(r, std::min(g, b));
-	float delta = maxC - minC;
-	glm::vec3 hsv{ 0.0f, 0.0f, maxC };
-	if (delta > 1e-6f)
-	{
-		hsv.y = delta / maxC;
-		if (maxC == r)
-			hsv.x = std::fmod((g - b) / delta, 6.0f);
-		else if (maxC == g)
-			hsv.x = (b - r) / delta + 2.0f;
-		else
-			hsv.x = (r - g) / delta + 4.0f;
-		hsv.x /= 6.0f;
-		if (hsv.x < 0.0f) hsv.x += 1.0f;
-	}
-	return hsv;
-}
-
-inline glm::vec3 HsvToRgb(const glm::vec3& hsv)
-{
-	float h = hsv.r * 6.0f;
-	float s = hsv.g, v = hsv.b;
-	int i = (int)std::floor(h) % 6;
-	float f = h - std::floor(h);
-	float p = v * (1.0f - s);
-	float q = v * (1.0f - f * s);
-	float t = v * (1.0f - (1.0f - f) * s);
-	switch (i)
-	{
-	case 0:  return { v, t, p };
-	case 1:  return { q, v, p };
-	case 2:  return { p, v, t };
-	case 3:  return { p, q, v };
-	case 4:  return { t, p, v };
-	default: return { v, p, q };
-	}
-}
+using TinyEngine::Math::RgbToHsv;
+using TinyEngine::Math::HsvToRgb;
 
 // ---- CMYK (0..1 per component) ---------------------------------------------
 
