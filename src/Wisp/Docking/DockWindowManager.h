@@ -48,6 +48,22 @@ public:
 	std::shared_ptr<DockState> GetState() const { return m_State; }
 	size_t GetSecondaryWindowCount() const { return m_Windows.size(); }
 
+	// The native window hosting `panel` (a PIE client's
+	// input window): `mainNative` when the panel is in the main window, the
+	// projected OS window's handle otherwise, null when the panel is closed
+	// or its window node is not projected (yet, or ever - offscreen).
+	void* FindNativeWindowOfPanel(const dock::PanelId& panel, void* mainNative) const
+	{
+		if (!m_State) return nullptr;
+		const dock::NodeId well = m_State->FindPanelWell(panel);
+		if (well == 0) return nullptr;
+		const dock::WindowNode* window = dock::FindWindowContainingNode(m_State->GetModel(), well);
+		if (!window) return nullptr;
+		if (window->bMain) return mainNative;
+		auto it = m_Windows.find(window->Id);
+		return it != m_Windows.end() && it->second->OSWindow ? it->second->OSWindow->GetNativeWindow() : nullptr;
+	}
+
 	// Call once per application frame (from the app layer's OnUpdate).
 	void Update()
 	{
