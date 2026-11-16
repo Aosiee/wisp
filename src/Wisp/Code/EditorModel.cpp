@@ -66,6 +66,8 @@ namespace wisp::code {
 			}
 		}
 
+		bool IsWordByte(char c) { return std::isalnum((unsigned char)c) || c == '_'; }
+
 		bool EqualsAt(const std::string& line, size_t at, std::string_view needle, bool matchCase)
 		{
 			if (at + needle.size() > line.size())
@@ -78,6 +80,19 @@ namespace wisp::code {
 					return false;
 			}
 			return true;
+		}
+
+		// A find match: the needle at `at`, and with wholeWord no word
+		// character just before or after it.
+		bool MatchAt(const std::string& line, size_t at, std::string_view needle, bool matchCase, bool wholeWord)
+		{
+			if (!EqualsAt(line, at, needle, matchCase))
+				return false;
+			if (!wholeWord)
+				return true;
+			const bool before = at > 0 && IsWordByte(line[at - 1]);
+			const bool after = at + needle.size() < line.size() && IsWordByte(line[at + needle.size()]);
+			return !before && !after;
 		}
 
 		size_t LeadingWhitespace(const std::string& line)
@@ -113,6 +128,49 @@ namespace wisp::code {
 					return true;
 			// `function(...)` / `local function f(a)` - a header ending at its ')'.
 			return last == ')' && before.find("function") != std::string_view::npos;
+		}
+
+		// Does the line end in a `{` that nothing on it closes (cluau's block
+		// opener, or a multi-line table)?
+		bool OpensBraceBlock(std::string_view before)
+		{
+			while (!before.empty() && (before.back() == ' ' || before.back() == '\t'))
+				before.remove_suffix(1);
+			if (before.empty() || before.back() != '{')
+				return false;
+			int depth = 0;
+			for (char ch : before)
+				depth += ch == '{' ? 1 : ch == '}' ? -1 : 0;
+			return depth > 0;
+		}
+
+		// The closer Enter adds after a Luau block header (`then`, `do`,
+		// `function(...)`): "end", or "end," for a table field's function
+		// (`OnStart = function(self)`); empty for any other line. `repeat` /
+		// brackets are left alone.
+		std::string BlockCloserFor(std::string_view before)
+		{
+			while (!before.empty() && (before.back() == ' ' || before.back() == '\t'))
+				before.remove_suffix(1);
+			if (before.empty())
+				return {};
+			auto endsWithWord = [&](std::string_view word) {
+				return before.size() >= word.size() && before.substr(before.size() - word.size()) == word
+					&& (before.size() == word.size() || ClassOf(before[before.size() - word.size() - 1]) != CharClass::Word);
+			};
+			if (endsWithWord("then") || endsWithWord("do"))
+				return "end";
+			if (before.back() != ')' || before.find("function") == std::string_view::npos)
+				return {};
+			// `Name = function(...)`: a field of a table constructor.
+			std::string_view head = before.substr(before.find_first_not_of(" \t"));
+			size_t name = 0;
+			while (name < head.size() && ClassOf(head[name]) == CharClass::Word)
+				name++;
+			const std::string_view rest = head.substr(name);
+			const bool field = name > 0 && head.substr(0, name) != "local" && rest.find_first_not_of(' ') != std::string_view::npos
+				&& rest[rest.find_first_not_of(' ')] == '=' && rest.find("function") != std::string_view::npos;
+			return field ? "end," : "end";
 		}
 
 	} // namespace
@@ -196,6 +254,19 @@ namespace wisp::code {
 		m_Redo.clear();
 		m_CoalesceOpen = kind != Kind::Other;
 		m_LastEditTime = now;
+	}
+
+	void EditorModel::ReplaceRange(const TextRange& range, std::string_view text, int caretOffset)
+	{
+		BreakUndoGroup();
+		Begin(Kind::Other);
+		const TextPos start = m_Doc.Clamp(range.Start);
+		TextPos caret = Apply(range, text);
+		if (caretOffset >= 0 && (size_t)caretOffset <= text.size())
+			caret = EndOfInsert(start, text.substr(0, (size_t)caretOffset));
+		m_Carets = { Caret{ caret, caret } };
+		m_Primary = 0;
+		Commit();
 	}
 
 	bool EditorModel::Undo()
@@ -637,6 +708,32 @@ namespace wisp::code {
 			Commit();
 			return;
 		}
+
+		// A `}` typed on a blank line (only indentation before the caret)
+		// steps back one indent level.
+		if (c == '}' && m_Language.BraceBlocks && !anySelection &&
+			std::all_of(m_Carets.begin(), m_Carets.end(), [&](const Caret& k) {
+				const std::string& line = m_Doc.Line(k.Pos.Line);
+				return k.Pos.Col > 0 && line.find_first_not_of(" \t") >= (size_t)k.Pos.Col;
+			}))
+		{
+			std::vector<TextRange> ranges;
+			std::vector<std::string> texts;
+			for (const Caret& caret : m_Carets)
+			{
+				std::string indent = m_Doc.Line(caret.Pos.Line).substr(0, (size_t)caret.Pos.Col);
+				if (indent.back() == '\t')
+					indent.pop_back();
+				else
+					indent.erase(indent.size() - std::min<size_t>(indent.size(), 4));
+				ranges.push_back({ { caret.Pos.Line, 0 }, caret.Pos });
+				texts.push_back(indent + "}");
+			}
+			Begin(Kind::Typing);
+			ReplaceEachCaret(texts, ranges);
+			Commit();
+			return;
+		}
 		InsertText(text);
 	}
 
@@ -665,6 +762,40 @@ namespace wisp::code {
 				caretLineOffset.push_back(1);
 				caretCol.push_back((int)indent.size() + 1);
 				continue;
+			}
+			// Enter at the end of an unclosed block header adds its
+			// `end` - unless the next non-blank line is already the body
+			// (indented deeper) or a closer at this indent.
+			std::string closer;
+			if (after == 0 && range.End.Line == range.Start.Line)
+			{
+				if (m_Language.LuauBlockClose)
+					closer = BlockCloserFor(before);
+				else if (m_Language.BraceBlocks && OpensBraceBlock(before))
+					closer = "}";
+			}
+			if (!closer.empty())
+			{
+				int next = range.Start.Line + 1;
+				while (next < m_Doc.LineCount() && m_Doc.Line(next).find_first_not_of(" \t") == std::string::npos)
+					next++;
+				bool closed = false;
+				if (next < m_Doc.LineCount())
+				{
+					const std::string& nextLine = m_Doc.Line(next);
+					const size_t nextIndent = LeadingWhitespace(nextLine);
+					const std::string_view word = std::string_view(nextLine).substr(nextIndent);
+					closed = nextIndent > indent.size()
+						|| (nextIndent == indent.size() && (word.starts_with("end") || word.starts_with("else") || word.starts_with("until")
+							|| (closer == "}" && word.starts_with("}"))));
+				}
+				if (!closed)
+				{
+					texts.push_back("\n" + indent + "\t\n" + indent + closer);
+					caretLineOffset.push_back(1);
+					caretCol.push_back((int)indent.size() + 1);
+					continue;
+				}
 			}
 			if (OpensBlock(before))
 				indent.push_back('\t');
@@ -831,6 +962,8 @@ namespace wisp::code {
 
 	void EditorModel::ToggleComment(std::string_view prefix)
 	{
+		if (prefix.empty())
+			prefix = m_Language.LineComment;
 		const std::vector<int> lines = CaretLines();
 		bool allCommented = true;
 		size_t minIndent = SIZE_MAX;
@@ -1013,7 +1146,7 @@ namespace wisp::code {
 
 	// ---- find -----------------------------------------------------------------
 
-	bool EditorModel::FindFrom(TextPos from, std::string_view needle, bool matchCase, bool backwards, TextRange& out) const
+	bool EditorModel::FindFrom(TextPos from, std::string_view needle, bool matchCase, bool backwards, TextRange& out, bool wholeWord) const
 	{
 		if (needle.empty() || needle.find('\n') != std::string_view::npos)
 			return false;
@@ -1027,7 +1160,7 @@ namespace wisp::code {
 			{
 				const size_t start = step == 0 ? (size_t)from.Col : 0;
 				for (size_t at = start; at + needle.size() <= line.size(); at++)
-					if (EqualsAt(line, at, needle, matchCase))
+					if (MatchAt(line, at, needle, matchCase, wholeWord))
 					{
 						out = { { index, (int)at }, { index, (int)(at + needle.size()) } };
 						return true;
@@ -1039,7 +1172,7 @@ namespace wisp::code {
 			{
 				long long at = step == 0 ? (long long)from.Col - (long long)needle.size() : (long long)line.size() - (long long)needle.size();
 				for (; at >= 0; at--)
-					if (EqualsAt(line, (size_t)at, needle, matchCase))
+					if (MatchAt(line, (size_t)at, needle, matchCase, wholeWord))
 					{
 						out = { { index, (int)at }, { index, (int)at + (int)needle.size() } };
 						return true;
@@ -1049,11 +1182,11 @@ namespace wisp::code {
 		return false;
 	}
 
-	bool EditorModel::FindNext(std::string_view needle, bool matchCase, bool backwards)
+	bool EditorModel::FindNext(std::string_view needle, bool matchCase, bool backwards, bool wholeWord)
 	{
 		const TextRange selection = PrimaryCaret().Selection();
 		TextRange found;
-		if (!FindFrom(backwards ? selection.Start : selection.End, needle, matchCase, backwards, found))
+		if (!FindFrom(backwards ? selection.Start : selection.End, needle, matchCase, backwards, found, wholeWord))
 			return false;
 		Caret caret;
 		caret.Anchor = found.Start;
@@ -1064,12 +1197,12 @@ namespace wisp::code {
 		return true;
 	}
 
-	bool EditorModel::ReplaceNext(std::string_view needle, std::string_view replacement, bool matchCase)
+	bool EditorModel::ReplaceNext(std::string_view needle, std::string_view replacement, bool matchCase, bool wholeWord)
 	{
 		const Caret primary = PrimaryCaret();
 		const TextRange selection = primary.Selection();
 		const std::string selected = m_Doc.GetRange(selection);
-		if (selection.Start.Line == selection.End.Line && selected.size() == needle.size() && EqualsAt(selected, 0, needle, matchCase))
+		if (selection.Start.Line == selection.End.Line && selected.size() == needle.size() && MatchAt(m_Doc.Line(selection.Start.Line), (size_t)selection.Start.Col, needle, matchCase, wholeWord))
 		{
 			m_Carets = { primary };
 			m_Primary = 0;
@@ -1078,10 +1211,10 @@ namespace wisp::code {
 			m_Carets = { Caret{ end, end, -1 } };
 			Commit();
 		}
-		return FindNext(needle, matchCase);
+		return FindNext(needle, matchCase, false, wholeWord);
 	}
 
-	int EditorModel::ReplaceAll(std::string_view needle, std::string_view replacement, bool matchCase)
+	int EditorModel::ReplaceAll(std::string_view needle, std::string_view replacement, bool matchCase, bool wholeWord)
 	{
 		if (needle.empty())
 			return 0;
@@ -1091,7 +1224,7 @@ namespace wisp::code {
 			const std::string& line = m_Doc.Line(index);
 			for (size_t at = 0; at + needle.size() <= line.size();)
 			{
-				if (EqualsAt(line, at, needle, matchCase))
+				if (MatchAt(line, at, needle, matchCase, wholeWord))
 				{
 					matches.push_back({ { index, (int)at }, { index, (int)(at + needle.size()) } });
 					at += needle.size();
@@ -1112,7 +1245,7 @@ namespace wisp::code {
 		return (int)matches.size();
 	}
 
-	int EditorModel::CountMatches(std::string_view needle, bool matchCase) const
+	int EditorModel::CountMatches(std::string_view needle, bool matchCase, bool wholeWord) const
 	{
 		if (needle.empty() || needle.find('\n') != std::string_view::npos)
 			return 0;
@@ -1122,7 +1255,7 @@ namespace wisp::code {
 			const std::string& line = m_Doc.Line(index);
 			for (size_t at = 0; at + needle.size() <= line.size();)
 			{
-				if (EqualsAt(line, at, needle, matchCase))
+				if (MatchAt(line, at, needle, matchCase, wholeWord))
 				{
 					count++;
 					at += needle.size();
@@ -1134,7 +1267,32 @@ namespace wisp::code {
 		return count;
 	}
 
-	void EditorModel::GoToLine(int line)
+		int EditorModel::MatchIndex(std::string_view needle, bool matchCase, bool wholeWord) const
+	{
+		const TextRange selection = PrimaryCaret().Selection();
+		if (needle.empty() || selection.Start.Line != selection.End.Line || selection.End.Col - selection.Start.Col != (int)needle.size())
+			return 0;
+		int index = 0;
+		for (int line = 0; line <= selection.Start.Line; line++)
+		{
+			const std::string& text = m_Doc.Line(line);
+			for (size_t at = 0; at + needle.size() <= text.size();)
+			{
+				if (!MatchAt(text, at, needle, matchCase, wholeWord))
+				{
+					at++;
+					continue;
+				}
+				index++;
+				if (line == selection.Start.Line && (int)at == selection.Start.Col)
+					return index;
+				at += needle.size();
+			}
+		}
+		return 0;
+	}
+
+void EditorModel::GoToLine(int line)
 	{
 		line = std::clamp(line, 0, m_Doc.LineCount() - 1);
 		const int col = (int)LeadingWhitespace(m_Doc.Line(line));

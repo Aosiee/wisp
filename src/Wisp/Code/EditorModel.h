@@ -50,6 +50,20 @@ namespace wisp::code {
 		EditorModel() = default;
 		explicit EditorModel(std::string_view text) { SetText(text); }
 
+		// The language's rules - Ctrl+/'s line comment, and whether Enter
+		// closes a Luau block header with `end` (cluau's braces pair
+		// instead).
+		struct LanguageRules
+		{
+			std::string LineComment = "--";
+			bool LuauBlockClose = true;
+			// C-style blocks (cluau): Enter after an unclosed `{` adds the
+			// `}`, and a `}` typed on a blank line steps back one indent.
+			bool BraceBlocks = false;
+		};
+		void SetLanguage(LanguageRules rules) { m_Language = std::move(rules); }
+		const LanguageRules& Language() const { return m_Language; }
+
 		// Replaces everything; clears undo, folds and carets (one at 0,0); clean.
 		void SetText(std::string_view text);
 		const TextDocument& Doc() const { return m_Doc; }
@@ -80,7 +94,7 @@ namespace wisp::code {
 		void Delete(bool word);
 		void Indent();  // Tab: lines when a selection spans lines, else a tab
 		void Outdent(); // Shift+Tab: the carets' lines
-		void ToggleComment(std::string_view prefix = "--");
+		void ToggleComment(std::string_view prefix = {}); // empty: the language's line comment
 		void DuplicateLines();
 		void MoveLines(int direction); // -1 up, +1 down
 		std::string CopySelection() const; // no selection: the carets' whole lines
@@ -88,12 +102,20 @@ namespace wisp::code {
 		bool Undo();
 		bool Redo();
 		void BreakUndoGroup() { m_CoalesceOpen = false; }
+		// An accepted completion - `range` becomes
+		// `text` in one step, leaving one caret `caretOffset` bytes into the
+		// inserted text (-1 = its end).
+		void ReplaceRange(const TextRange& range, std::string_view text, int caretOffset = -1);
 
 		// ---- find / replace / go to ------------------------------------
-		bool FindNext(std::string_view needle, bool matchCase, bool backwards = false);
-		bool ReplaceNext(std::string_view needle, std::string_view replacement, bool matchCase);
-		int ReplaceAll(std::string_view needle, std::string_view replacement, bool matchCase);
-		int CountMatches(std::string_view needle, bool matchCase) const;
+		// wholeWord: no word character may touch the match.
+		bool FindNext(std::string_view needle, bool matchCase, bool backwards = false, bool wholeWord = false);
+		bool ReplaceNext(std::string_view needle, std::string_view replacement, bool matchCase, bool wholeWord = false);
+		int ReplaceAll(std::string_view needle, std::string_view replacement, bool matchCase, bool wholeWord = false);
+		int CountMatches(std::string_view needle, bool matchCase, bool wholeWord = false) const;
+		// The 1-based position of the primary selection among the matches
+		// (the find bar's "3 of 22"); 0 when it is not on one.
+		int MatchIndex(std::string_view needle, bool matchCase, bool wholeWord = false) const;
 		void GoToLine(int line);
 
 		// ---- folding (by indentation) ------------------------------------
@@ -142,11 +164,12 @@ namespace wisp::code {
 		void UnfoldContaining(int line);
 		std::vector<int> CaretLines() const; // the distinct lines the carets cover, ascending
 		TextPos MoveOne(TextPos pos, CaretMove move, int& preferred, int pageLines) const;
-		bool FindFrom(TextPos from, std::string_view needle, bool matchCase, bool backwards, TextRange& out) const;
+		bool FindFrom(TextPos from, std::string_view needle, bool matchCase, bool backwards, TextRange& out, bool wholeWord = false) const;
 		// An edit at (line, col) changed the line count by lineDelta.
 		void ShiftFolds(int line, int col, int lineDelta);
 
 		TextDocument m_Doc;
+		LanguageRules m_Language;
 		std::vector<Caret> m_Carets{ Caret{} };
 		size_t m_Primary = 0;
 

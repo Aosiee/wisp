@@ -111,4 +111,24 @@ void MessageBox::ShowConfirm(FontCache* fc, FontHandle fh, float fs,
 	UIApplication::Get().ShowPopup(BuildContent(fc, fh, fs, title, message, ButtonRow(std::move(noBtn), std::move(yesBtn))));
 }
 
+void MessageBox::ShowSaveDiscardCancel(FontCache* fc, FontHandle fh, float fs,
+	const std::string& title, const std::string& message,
+	std::function<void()> onSave, std::function<void()> onDiscard, std::function<void()> onCancel)
+{
+	auto saveBtn = MakeModalButton(fc, fh, fs, "Save", [onSave]() {
+		UIApplication::Get().RequestDismissPopups();
+		if (onSave) onSave();
+	}, true);
+	auto discardBtn = MakeModalButton(fc, fh, fs, "Don't Save", [onDiscard]() {
+		UIApplication::Get().RequestDismissPopups();
+		if (onDiscard) onDiscard();
+	});
+	auto cancelBtn = MakeModalButton(fc, fh, fs, "Cancel", [onCancel]() {
+		UIApplication::Get().RequestDismissPopups();
+		if (onCancel) onCancel();
+	});
+	UIApplication::Get().ShowPopup(BuildContent(fc, fh, fs, title, message,
+		ButtonRow(std::move(discardBtn), std::move(cancelBtn), std::move(saveBtn))));
+}
+
 } // namespace wisp

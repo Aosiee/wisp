@@ -39,7 +39,15 @@ public:
 		std::function<void()> onDecline = nullptr);
 
 	// Base brush for the modal background constants (they were writable
-	// statics nothing ever wrote).
+	// statics nothing ever wrote). Closing a modified document - Save
+	// (primary), Don't Save, Cancel. Escape / a click outside count as
+	// Cancel.
+	static void ShowSaveDiscardCancel(FontCache* fc, FontHandle fh, float fontSize,
+		const std::string& title, const std::string& message,
+		std::function<void()> onSave,
+		std::function<void()> onDiscard,
+		std::function<void()> onCancel = nullptr);
+
 	static constexpr Brush BackgroundBrush{ wisp::tokens::Popup };
 	// Button brushes (shared defaults)
 	static constexpr Brush ButtonNormal{ wisp::tokens::Control };

@@ -102,6 +102,20 @@ inline constexpr glm::vec4 SyntaxComment    = Hex(0x6A9955);
 inline constexpr glm::vec4 SyntaxOperator   = Hex(0xA2A2AB);
 inline constexpr glm::vec4 SyntaxFunction   = Hex(0xDCDCAA);
 inline constexpr glm::vec4 SyntaxGlobal     = Hex(0x4EC9B0);
+// The cards' type text, the occurrence boxes, the inline diagnostics'
+// line band and the completion kind chips.
+inline constexpr glm::vec4 SyntaxType       = Hex(0x4EC9B0);
+inline constexpr glm::vec4 SyntaxParameter  = Hex(0x9CDCFE);
+inline constexpr glm::vec4 CodeOccurrence   = Hex(0xFFFFFF, 0.09f);
+inline constexpr float CodeDiagnosticBandAlpha = 0.07f;
+inline constexpr float CodeInlineDiagnosticAlpha = 0.78f;
+inline constexpr float CodeKindChipAlpha = 0.18f;
+inline constexpr glm::vec4 CodeIndentGuideActive = Hex(0xFFFFFF, 0.22f);
+inline constexpr glm::vec4 CodeScrollThumb  = Hex(0xFFFFFF, 0.24f);
+// Bracket pairs cycle three colours by depth.
+inline constexpr glm::vec4 SyntaxBracket1   = Hex(0xFFD700);
+inline constexpr glm::vec4 SyntaxBracket2   = Hex(0xDA70D6);
+inline constexpr glm::vec4 SyntaxBracket3   = Hex(0x179FFF);
 
 inline constexpr float RadiusSmall   = 3.0f;
 inline constexpr float RadiusMedium  = 5.0f;

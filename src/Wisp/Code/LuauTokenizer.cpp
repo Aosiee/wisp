@@ -11,6 +11,7 @@ namespace wisp::code {
 		// (the count of '=') below it.
 		constexpr uint32_t kLongString = 1u << 24;
 		constexpr uint32_t kLongComment = 2u << 24;
+		constexpr uint32_t kBlockComment = 3u << 24; // cluau's /* ... */
 
 		bool IsIdentStart(char c) { return std::isalpha((unsigned char)c) || c == '_' || (unsigned char)c >= 0x80; }
 		bool IsIdent(char c) { return IsIdentStart(c) || std::isdigit((unsigned char)c); }
@@ -20,6 +21,15 @@ namespace wisp::code {
 			for (std::string_view keyword : { "and", "break", "do", "else", "elseif", "end", "for", "function", "if", "in",
 			                                  "local", "not", "or", "repeat", "return", "then", "until", "while", "continue",
 			                                  "type", "export" })
+				if (word == keyword)
+					return true;
+			return false;
+		}
+
+		bool IsCluauKeyword(std::string_view word)
+		{
+			for (std::string_view keyword : { "and", "break", "do", "else", "for", "function", "if", "in", "let", "const", "class",
+			                                  "local", "not", "or", "return", "while", "continue", "type", "export" })
 				if (word == keyword)
 					return true;
 			return false;
@@ -69,8 +79,8 @@ namespace wisp::code {
 
 	} // namespace
 
-	LuauTokenizer::LuauTokenizer(std::unordered_set<std::string> globals)
-		: m_Globals(std::move(globals))
+	LuauTokenizer::LuauTokenizer(std::unordered_set<std::string> globals, LuauSyntax syntax)
+		: m_Globals(std::move(globals)), m_Syntax(syntax)
 	{
 	}
 
@@ -82,6 +92,20 @@ namespace wisp::code {
 				out.push_back({ (int)start, (int)(end - start), kind });
 		};
 
+		const bool cluau = m_Syntax == LuauSyntax::Cluau;
+		// A cluau block comment carried over from the line above.
+		if (state == kBlockComment)
+		{
+			const size_t close = line.find("*/");
+			if (close == std::string_view::npos)
+			{
+				emit(0, line.size(), TokenKind::Comment);
+				return state;
+			}
+			emit(0, close + 2, TokenKind::Comment);
+			i = close + 2;
+			state = 0;
+		}
 		// A long string or comment carried over from the line above.
 		if (state != 0)
 		{
@@ -105,8 +129,36 @@ namespace wisp::code {
 				i++;
 				continue;
 			}
+			// cluau's comments: `//` to the end of the line, `/* ... */`.
+			if (cluau && c == '/' && i + 1 < line.size() && line[i + 1] == '/')
+			{
+				emit(i, line.size(), TokenKind::Comment);
+				return 0;
+			}
+			if (cluau && c == '/' && i + 1 < line.size() && line[i + 1] == '*')
+			{
+				const size_t close = line.find("*/", i + 2);
+				if (close == std::string_view::npos)
+				{
+					emit(i, line.size(), TokenKind::Comment);
+					return kBlockComment;
+				}
+				emit(i, close + 2, TokenKind::Comment);
+				i = close + 2;
+				continue;
+			}
+			// An attribute (`@export`): a keyword.
+			if (cluau && c == '@' && i + 1 < line.size() && IsIdentStart(line[i + 1]))
+			{
+				size_t j = i + 1;
+				while (j < line.size() && IsIdent(line[j]))
+					j++;
+				emit(i, j, TokenKind::Keyword);
+				i = j;
+				continue;
+			}
 			// Comments: `--` to the end of the line, or `--[==[ ... ]==]`.
-			if (c == '-' && i + 1 < line.size() && line[i + 1] == '-')
+			if (!cluau && c == '-' && i + 1 < line.size() && line[i + 1] == '-')
 			{
 				const int level = LongBracketLevel(line, i + 2);
 				if (level >= 0)
@@ -174,7 +226,7 @@ namespace wisp::code {
 					j++;
 				const std::string_view word = line.substr(i, j - i);
 				TokenKind kind = TokenKind::Plain;
-				if (IsKeyword(word))
+				if (cluau ? IsCluauKeyword(word) : IsKeyword(word))
 					kind = TokenKind::Keyword;
 				else if (IsLiteral(word))
 					kind = TokenKind::Literal;

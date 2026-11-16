@@ -44,14 +44,19 @@ namespace wisp::code {
 		virtual uint32_t TokenizeLine(std::string_view line, uint32_t state, std::vector<Token>& out) const = 0;
 	};
 
+	// Luau, or cluau (`//` and `/* */` comments, `--` an operator,
+	// `let` / `const` / `class` keywords, `@attribute`s).
+	enum class LuauSyntax : uint8_t { Luau, Cluau };
+
 	class LuauTokenizer final : public ITokenizer
 	{
 	public:
-		explicit LuauTokenizer(std::unordered_set<std::string> globals = {});
+		explicit LuauTokenizer(std::unordered_set<std::string> globals = {}, LuauSyntax syntax = LuauSyntax::Luau);
 		uint32_t TokenizeLine(std::string_view line, uint32_t state, std::vector<Token>& out) const override;
 
 	private:
 		std::unordered_set<std::string> m_Globals;
+		LuauSyntax m_Syntax = LuauSyntax::Luau;
 	};
 
 } // namespace wisp::code

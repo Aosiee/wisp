@@ -62,13 +62,13 @@ TEST_CASE("code model: typing auto-indents blocks, pairs brackets and quotes, an
 	EditorModel model("\tif x then");
 	model.SetCaret(P(0, 10), false);
 	model.InsertNewline();
-	CHECK(model.GetText() == "\tif x then\n\t\t");
+	CHECK(model.GetText() == "\tif x then\n\t\t\n\tend"); // the block closes
 	model.TypeCodePoint('f');
 	model.TypeCodePoint('(');
-	CHECK(model.GetText() == "\tif x then\n\t\tf()");
+	CHECK(model.GetText() == "\tif x then\n\t\tf()\n\tend");
 	CHECK(model.PrimaryCaret().Pos == P(1, 4));
 	model.TypeCodePoint(')');
-	CHECK(model.GetText() == "\tif x then\n\t\tf()");
+	CHECK(model.GetText() == "\tif x then\n\t\tf()\n\tend");
 	CHECK(model.PrimaryCaret().Pos == P(1, 5));
 
 	EditorModel braces("t = {}");
@@ -247,6 +247,133 @@ TEST_CASE("code tokenizer: Luau keywords, literals, numbers, strings, globals, c
 	CHECK(tokenizer.TokenizeLine("done ]==] y", open, tokens) == 0);
 	CHECK(kindAt(0) == TokenKind::Comment);
 	CHECK(kindAt(10) == TokenKind::Plain);
+}
+
+TEST_CASE("code model: a completion replaces the typed word in one undo step and places the caret")
+{
+	EditorModel model("local t = self.Ent\n");
+	model.SetCaret(P(0, 18), false);
+	model.ReplaceRange({ P(0, 15), P(0, 18) }, "Entity", -1);
+	CHECK(model.Doc().Line(0) == "local t = self.Entity");
+	CHECK(model.PrimaryCaret().Pos == P(0, 21));
+	CHECK(model.Carets().size() == 1);
+
+	// A snippet across lines, the caret at its marker.
+	EditorModel snippet("return {\n\tOn\n}\n");
+	snippet.SetCaret(P(1, 3), false);
+	snippet.ReplaceRange({ P(1, 1), P(1, 3) }, "OnStart = function(self)\n\t\t\n\tend,", 27);
+	CHECK(snippet.Doc().Line(1) == "\tOnStart = function(self)");
+	CHECK(snippet.Doc().Line(2) == "\t\t");
+	CHECK(snippet.Doc().Line(3) == "\tend,");
+	CHECK(snippet.PrimaryCaret().Pos == P(2, 2));
+	CHECK(snippet.Undo());
+	CHECK(snippet.Doc().Line(1) == "\tOn");
+}
+
+TEST_CASE("code model: Enter closes an open Luau block once, with end, for a table field end,")
+{
+	// An `if ... then` at the end of the text: the body line and its `end`.
+	EditorModel model("if ready then");
+	model.SetCaret(P(0, 13), false);
+	model.InsertNewline();
+	CHECK(model.Doc().LineCount() == 3);
+	CHECK(model.Doc().Line(1) == "\t");
+	CHECK(model.Doc().Line(2) == "end");
+	CHECK(model.PrimaryCaret().Pos == P(1, 1));
+
+	// A hook in the module table closes with `end,`.
+	EditorModel hook("return {\n\tOnStart = function(self)\n}");
+	hook.SetCaret(P(1, 25), false);
+	hook.InsertNewline();
+	CHECK(hook.Doc().Line(2) == "\t\t");
+	CHECK(hook.Doc().Line(3) == "\tend,");
+	CHECK(hook.PrimaryCaret().Pos == P(2, 2));
+
+	// Already closed (the body follows, or the closer does): just a newline.
+	EditorModel body("for i = 1, 3 do\n\tprint(i)\nend");
+	body.SetCaret(P(0, 15), false);
+	body.InsertNewline();
+	CHECK(body.Doc().LineCount() == 4);
+	CHECK(body.Doc().Line(3) == "end");
+	EditorModel empty("while true do\nend");
+	empty.SetCaret(P(0, 13), false);
+	empty.InsertNewline();
+	CHECK(empty.Doc().LineCount() == 3);
+	CHECK(empty.Doc().Line(2) == "end");
+
+	// A local function closes with a plain `end`; one undo removes it all.
+	EditorModel fn("local function step(dt)");
+	fn.SetCaret(P(0, 23), false);
+	fn.InsertNewline();
+	CHECK(fn.Doc().Line(2) == "end");
+	CHECK(fn.Undo());
+	CHECK(fn.Doc().LineCount() == 1);
+}
+
+TEST_CASE("code model: brace blocks (cluau) close with } on Enter, and a typed } steps back")
+{
+	const EditorModel::LanguageRules cluau{ "//", false, true };
+
+	// An unclosed `{` at the end of a header: the body line and its `}`.
+	EditorModel model("if (ready) {");
+	model.SetLanguage(cluau);
+	model.SetCaret(P(0, 12), false);
+	model.InsertNewline();
+	CHECK(model.Doc().LineCount() == 3);
+	CHECK(model.Doc().Line(1) == "\t");
+	CHECK(model.Doc().Line(2) == "}");
+	CHECK(model.PrimaryCaret().Pos == P(1, 1));
+
+	// Luau's `then` gets no `end` in a brace language.
+	EditorModel luauWord("if ready then");
+	luauWord.SetLanguage(cluau);
+	luauWord.SetCaret(P(0, 13), false);
+	luauWord.InsertNewline();
+	CHECK(luauWord.Doc().LineCount() == 2);
+
+	// Already closed by a `}` at the same indent: just a newline.
+	EditorModel closed("function f() {\n}");
+	closed.SetLanguage(cluau);
+	closed.SetCaret(P(0, 14), false);
+	closed.InsertNewline();
+	CHECK(closed.Doc().LineCount() == 3);
+
+	// A `{ ... }` closed on its own line opens nothing.
+	EditorModel inline_("let t = { 1 }");
+	inline_.SetLanguage(cluau);
+	inline_.SetCaret(P(0, 13), false);
+	inline_.InsertNewline();
+	CHECK(inline_.Doc().LineCount() == 2);
+
+	// A `}` typed on an indented blank line steps back one level.
+	EditorModel typed("if (a) {\n\t\tx()\n\t\t");
+	typed.SetLanguage(cluau);
+	typed.SetCaret(P(2, 2), false);
+	typed.TypeCodePoint('}');
+	CHECK(typed.Doc().Line(2) == "\t}");
+	CHECK(typed.PrimaryCaret().Pos == P(2, 2));
+	// After text it is just a character.
+	EditorModel after("x");
+	after.SetLanguage(cluau);
+	after.SetCaret(P(0, 1), false);
+	after.TypeCodePoint('}');
+	CHECK(after.Doc().Line(0) == "x}");
+}
+
+TEST_CASE("code model: whole-word find and the match index")
+{
+	EditorModel model("self.speed = speed + speedUp\nlocal speed = 1");
+	CHECK(model.CountMatches("speed", true) == 4);
+	CHECK(model.CountMatches("speed", true, true) == 3);
+	REQUIRE(model.FindNext("speed", true, false, true));
+	CHECK(model.PrimaryCaret().Selection().Start == P(0, 5));
+	CHECK(model.MatchIndex("speed", true, true) == 1);
+	REQUIRE(model.FindNext("speed", true, false, true));
+	REQUIRE(model.FindNext("speed", true, false, true));
+	CHECK(model.PrimaryCaret().Selection().Start == P(1, 6)); // skipped speedUp
+	CHECK(model.MatchIndex("speed", true, true) == 3);
+	CHECK(model.ReplaceAll("speed", "rate", true, true) == 3);
+	CHECK(model.Doc().Line(0) == "self.rate = rate + speedUp");
 }
 
 } // namespace wisp_code_tests
