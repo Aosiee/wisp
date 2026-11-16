@@ -214,6 +214,10 @@ public:
 
 	void TickAnimation(float dt);
 	static float GetAnimTime() { return s_Instance ? s_Instance->m_AnimTime : 0.0f; }
+	// The modifiers held now (1 = Shift, 2 = Ctrl, the key events' bits),
+	// tracked from the Shift/Ctrl keys' own down/up - mouse events carry
+	// none, so a Shift- or Ctrl-click asks here.
+	int GetHeldModifiers() const { return m_HeldModifiers; }
 	bool IsDragActive() const { return m_DragOp.has_value(); }
 
 	// The in-flight drag's operation, or nullptr when nothing is dragging.
@@ -424,6 +428,7 @@ private:
 	// Animation
 	double m_LastTime = 0.0;
 	float  m_AnimTime = 0.0f;
+	int    m_HeldModifiers = 0; // GetHeldModifiers
 
 	// The debug-draw screen sub-batch's per-frame build scratch (Init's
 	// update callback; a member, not a function-local static). Game thread

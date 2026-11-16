@@ -79,6 +79,30 @@ inline constexpr glm::vec4 TypeCubemap   = Hex(0xE6B653);
 inline constexpr glm::vec4 TypeOther     = Hex(0x8A8A93);
 
 // ---- Metrics ----------------------------------------------------------------------
+// ---- Code (wisp::CodeEditor) --------------------------------
+inline constexpr glm::vec4 CodeBackground   = Hex(0x161618);
+inline constexpr glm::vec4 CodeGutter       = Hex(0x161618);
+inline constexpr glm::vec4 CodeLineNumber   = Hex(0x55555D);
+inline constexpr glm::vec4 CodeLineNumberActive = Hex(0xA2A2AB);
+inline constexpr glm::vec4 CodeCurrentLine  = Hex(0xFFFFFF, 0.035f);
+inline constexpr glm::vec4 CodeSelection    = Hex(0x264F78);
+inline constexpr glm::vec4 CodeFindMatch    = Hex(0xE0A82E, 0.22f);
+inline constexpr glm::vec4 CodeIndentGuide  = Hex(0xFFFFFF, 0.06f);
+inline constexpr glm::vec4 CodeBracketMatch = Hex(0xFFFFFF, 0.35f);
+inline constexpr glm::vec4 CodeCaret        = Hex(0xE2E2E6);
+inline constexpr glm::vec4 CodeMinimap      = Hex(0x131315);
+inline constexpr glm::vec4 CodeMinimapView  = Hex(0xFFFFFF, 0.07f);
+inline constexpr glm::vec4 CodeFoldMarker   = Hex(0x7D7D86);
+inline constexpr glm::vec4 SyntaxPlain      = Hex(0xD4D4D8);
+inline constexpr glm::vec4 SyntaxKeyword    = Hex(0xC586C0);
+inline constexpr glm::vec4 SyntaxLiteral    = Hex(0x569CD6);
+inline constexpr glm::vec4 SyntaxNumber     = Hex(0xB5CEA8);
+inline constexpr glm::vec4 SyntaxString     = Hex(0xCE9178);
+inline constexpr glm::vec4 SyntaxComment    = Hex(0x6A9955);
+inline constexpr glm::vec4 SyntaxOperator   = Hex(0xA2A2AB);
+inline constexpr glm::vec4 SyntaxFunction   = Hex(0xDCDCAA);
+inline constexpr glm::vec4 SyntaxGlobal     = Hex(0x4EC9B0);
+
 inline constexpr float RadiusSmall   = 3.0f;
 inline constexpr float RadiusMedium  = 5.0f;
 inline constexpr float RadiusLarge   = 8.0f;
