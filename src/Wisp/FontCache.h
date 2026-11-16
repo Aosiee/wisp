@@ -1,6 +1,8 @@
 #pragma once
 
 #include "Wisp/Core.h"
+#include "Wisp/DrawList.h"
+#include <cmath>
 #include <glm/glm.hpp>
 #include <string>
 #include <vector>
@@ -57,6 +59,12 @@ public:
 	// layout generation so the text widgets re-measure.
 	bool ReloadFontByPath(const std::string& sourcePath, const uint8_t* ttfData, size_t ttfSize);
 
+	// A codepoint the face lacks resolves through its fallbacks in order
+	// (measure and raster agree), so a text face that falls back to the
+	// icon font draws icons inline. Kerning applies only between two
+	// glyphs of the primary face.
+	void SetFallbacks(FontHandle font, std::vector<FontHandle> fallbacks);
+
 	// Bumped on every font reload; the text widgets compare it
 	// against their last-measure generation and re-measure when it moved.
 	uint64_t GetLayoutGeneration() const { return m_LayoutGeneration; }
@@ -91,7 +99,12 @@ private:
 		std::vector<uint8_t> TtfData;
 		int                  StbFontOffset = 0; // stb_truetype font index
 		std::string          SourcePath; // for the reload routing
+		std::vector<FontHandle> Fallbacks;
 	};
+
+	// The face that draws `codepoint` for `font`: the font itself, else the
+	// first fallback that has the glyph, else the font (its .notdef).
+	FontHandle ResolveFace(FontHandle font, uint32_t codepoint);
 
 	struct GlyphKey
 	{
@@ -129,5 +142,33 @@ private:
 	uint32_t m_ShelfMaxHeight = 0;
 	uint32_t m_ShelfX = 0;
 };
+
+// The one way to emit a glyph. `pen` is the pen position ON THE BASELINE.
+// The quad is the glyph's bitmap - not its advance (stretching the bitmap
+// across the advance smeared every proportional glyph; the old pixel font's
+// advance happened to equal its bitmap) - and its origin snaps to whole
+// pixels (one raster per size, so a fractional origin bilinear-splits thin
+// stems like 'l' and 'i' into nothing). `scale` draws a glyph rasterized at
+// one size larger/smaller.
+inline void AddGlyph(DrawList& dl, int layer, const glm::vec2& pen, const GlyphInfo& g,
+	const glm::vec4& tint, int clip, float scale = 1.0f)
+{
+	if (g.Width <= 0.0f || g.Height <= 0.0f)
+		return;
+	const glm::vec2 uv[4] = { { g.AtlasU0, g.AtlasV0 }, { g.AtlasU1, g.AtlasV0 }, { g.AtlasU1, g.AtlasV1 }, { g.AtlasU0, g.AtlasV1 } };
+	const glm::vec2 pos{ std::round(pen.x + g.BearingX * scale), std::round(pen.y + g.BearingY * scale) };
+	dl.AddText(layer, pos, std::string(), uv, g.Width * scale, g.Height * scale, tint, clip);
+}
+
+// A glyph over an 8-direction outline (labels over arbitrary image content).
+// The outline copies draw on `layer`, the glyph on top at layer + 1.
+inline void AddGlyphOutlined(DrawList& dl, int layer, const glm::vec2& pen, const GlyphInfo& g,
+	const glm::vec4& tint, const glm::vec4& outlineTint, float thickness, int clip)
+{
+	constexpr float kDirs[8][2] = { { 1, 0 }, { 1, 1 }, { 0, 1 }, { -1, 1 }, { -1, 0 }, { -1, -1 }, { 0, -1 }, { 1, -1 } };
+	for (const auto& d : kDirs)
+		AddGlyph(dl, layer, pen + glm::vec2(d[0] * thickness, d[1] * thickness), g, outlineTint, clip);
+	AddGlyph(dl, layer + 1, pen, g, tint, clip);
+}
 
 } // namespace wisp

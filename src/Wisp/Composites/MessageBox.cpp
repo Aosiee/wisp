@@ -1,37 +1,73 @@
 #include "Wisp/Composites/MessageBox.h"
 #include "Wisp/Declarative.h"
 #include "Wisp/Components/Spacer.h"
+#include "Wisp/StyleTokens.h"
+#include "Wisp/Composites/PopupMenu.h"
+#include "Wisp/Icons.h"
 
 namespace wisp {
 
+// The dialog buttons - the primary action in the accent, the others
+// neutral; fixed-width so a row reads as a group.
 static WidgetRef<SButton> MakeModalButton(FontCache* fc, FontHandle fh, float fs,
-	const std::string& label, std::function<void()> onClick)
+	const std::string& label, std::function<void()> onClick, bool primary = false)
 {
 	auto btn = WispNew(SButton);
-	btn->SetNormalBrush(MessageBox::ButtonNormal)
-		.SetHoveredBrush(MessageBox::ButtonHover)
-		.SetPressedBrush(MessageBox::ButtonPressed)
+	btn->SetNormalBrush(primary ? Brush{ tokens::Accent } : MessageBox::ButtonNormal)
+		.SetHoveredBrush(primary ? Brush{ tokens::AccentHover } : MessageBox::ButtonHover)
+		.SetPressedBrush(primary ? Brush{ tokens::AccentPressed } : MessageBox::ButtonPressed)
 		.SetOnClicked(std::move(onClick));
-	btn->SetChild(WispNew(STextBlock, fc, fh, fs, label, glm::vec4(1,1,1,1)));
+	btn->SetContentPadding({ 18.0f, 5.0f, 18.0f, 5.0f });
+	auto text = WispNew(STextBlock, fc, UIApplication::FontOr(FontRole::Medium, fh), fs, label,
+		primary ? tokens::TextOnAccent : tokens::TextPrimary);
+	btn->SetChild(std::move(text));
 	return btn;
+}
+
+template<typename... Buttons>
+static std::unique_ptr<Widget> ButtonRow(Buttons&&... buttons)
+{
+	std::vector<std::unique_ptr<Widget>> list;
+	(list.push_back(std::unique_ptr<Widget>(std::move(buttons))), ...);
+	auto row = WispNew(SHorizontalBox);
+	*row + row->AddSlot().Fill(1.0f)[ WispNew(SSpacer, glm::vec2(0,0)) ];
+	for (size_t i = 0; i < list.size(); i++)
+	{
+		auto sized = WispNew(SSizeBox);
+		sized->SetMinWidth(88.0f);
+		sized->SetChild(std::move(list[i]));
+		auto slot = row->AddSlot();
+		slot.Data.PaddingLeft = i == 0 ? 0.0f : 8.0f;
+		*row + std::move(slot)[ std::move(sized) ];
+	}
+	return std::unique_ptr<Widget>(std::move(row));
 }
 
 std::unique_ptr<Widget> MessageBox::BuildContent(FontCache* fc, FontHandle fh, float fs,
 	const std::string& title, const std::string& message, std::unique_ptr<Widget> buttons)
 {
-	auto content = WispNew(SVerticalBox);
-	*content
-		+ content->AddSlot().Padding(0, 0)[ WispNew(STextBlock, fc, fh, fs + 2.0f, title, glm::vec4(1.0f, 0.9f, 0.3f, 1.0f)) ]
-		+ content->AddSlot().Padding(20, 12).Fill(1.0f)[ WispNew(STextBlock, fc, fh, fs, message, glm::vec4(0.8f, 0.8f, 0.85f, 1.0f)) ]
-		+ content->AddSlot().Padding(0, 0)[ std::move(buttons) ];
+	// The dialog card - an info glyph + the SemiBold title, the message
+	// in the secondary tone, the buttons right-aligned at the bottom.
+	auto titleRow = WispNew(SHorizontalBox);
+	*titleRow
+		+ titleRow->AddSlot().VAlign(VAlign::Center)[ WispNew(STextBlock, fc, UIApplication::FontOr(FontRole::Icons, fh), 18.0f, icons::Info, tokens::AccentHover) ]
+		+ titleRow->AddSlot()[ WispNew(SSpacer, glm::vec2(10.0f, 1.0f)) ]
+		+ titleRow->AddSlot().VAlign(VAlign::Center).Fill(1.0f)[ WispNew(STextBlock, fc, UIApplication::FontOr(FontRole::SemiBold, fh), tokens::FontTitle, title, tokens::TextPrimary) ];
 
-	auto box = WispNew(SBorder);
-	box->SetBrush(BackgroundBrush).SetPadding(20, 16).SetChild(content);
+	auto content = WispNew(SVerticalBox);
+	auto messageSlot = content->AddSlot();
+	messageSlot.Data.PaddingTop = 12.0f;
+	messageSlot.Data.PaddingBottom = 20.0f;
+	messageSlot.Data.PaddingLeft = 28.0f;
+	*content
+		+ content->AddSlot()[ std::move(titleRow) ]
+		+ std::move(messageSlot).Fill(1.0f)[ WispNew(STextBlock, fc, fh, fs, message, tokens::TextSecondary) ]
+		+ content->AddSlot()[ std::move(buttons) ];
 
 	auto size = WispNew(SSizeBox);
-	size->SetMinWidth(360.0f).SetMinHeight(200.0f);
-	size->SetChild(std::move(box));
-	return size;
+	size->SetMinWidth(400.0f).SetMaxWidth(560.0f);
+	size->SetChild(std::move(content));
+	return std::make_unique<PopupFrame>(std::unique_ptr<Widget>(std::move(size)), 0.0f, 20.0f);
 }
 
 void MessageBox::Show(FontCache* fc, FontHandle fh, float fs,
@@ -39,15 +75,8 @@ void MessageBox::Show(FontCache* fc, FontHandle fh, float fs,
 {
 	auto btn = MakeModalButton(fc, fh, fs, "OK", []() {
 		UIApplication::Get().RequestDismissPopups();
-	});
-
-	auto row = WispNew(SHorizontalBox);
-	*row
-		+ row->AddSlot().Fill(1.0f)[ WispNew(SSpacer, glm::vec2(0,0)) ]
-		+ row->AddSlot()[ btn ]
-		+ row->AddSlot().Fill(1.0f)[ WispNew(SSpacer, glm::vec2(0,0)) ];
-
-	UIApplication::Get().ShowPopup(BuildContent(fc, fh, fs, title, message, std::move(row)));
+	}, true);
+	UIApplication::Get().ShowPopup(BuildContent(fc, fh, fs, title, message, ButtonRow(std::move(btn))));
 }
 
 void MessageBox::ShowOkCancel(FontCache* fc, FontHandle fh, float fs,
@@ -57,18 +86,13 @@ void MessageBox::ShowOkCancel(FontCache* fc, FontHandle fh, float fs,
 	auto okBtn = MakeModalButton(fc, fh, fs, "OK", [onOk]() {
 		if (onOk) onOk();
 		UIApplication::Get().RequestDismissPopups();
-	});
+	}, true);
 	auto cancelBtn = MakeModalButton(fc, fh, fs, "Cancel", [onCancel]() {
 		if (onCancel) onCancel();
 		UIApplication::Get().RequestDismissPopups();
 	});
 
-	auto row = WispNew(SHorizontalBox);
-	*row
-		+ row->AddSlot().Fill(1.0f)[ okBtn ]
-		+ row->AddSlot().Fill(1.0f)[ cancelBtn ];
-
-	UIApplication::Get().ShowPopup(BuildContent(fc, fh, fs, title, message, std::move(row)));
+	UIApplication::Get().ShowPopup(BuildContent(fc, fh, fs, title, message, ButtonRow(std::move(cancelBtn), std::move(okBtn))));
 }
 
 void MessageBox::ShowConfirm(FontCache* fc, FontHandle fh, float fs,
@@ -78,18 +102,13 @@ void MessageBox::ShowConfirm(FontCache* fc, FontHandle fh, float fs,
 	auto yesBtn = MakeModalButton(fc, fh, fs, "Yes", [onConfirm]() {
 		if (onConfirm) onConfirm();
 		UIApplication::Get().RequestDismissPopups();
-	});
+	}, true);
 	auto noBtn = MakeModalButton(fc, fh, fs, "No", [onDecline]() {
 		if (onDecline) onDecline();
 		UIApplication::Get().RequestDismissPopups();
 	});
 
-	auto row = WispNew(SHorizontalBox);
-	*row
-		+ row->AddSlot().Fill(1.0f)[ yesBtn ]
-		+ row->AddSlot().Fill(1.0f)[ noBtn ];
-
-	UIApplication::Get().ShowPopup(BuildContent(fc, fh, fs, title, message, std::move(row)));
+	UIApplication::Get().ShowPopup(BuildContent(fc, fh, fs, title, message, ButtonRow(std::move(noBtn), std::move(yesBtn))));
 }
 
 } // namespace wisp

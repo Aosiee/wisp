@@ -3,6 +3,7 @@
 #include "Wisp/Core.h"
 #include "Wisp/DrawList.h"
 #include "Wisp/Batcher.h"
+#include "Wisp/FontCache.h"
 #include "TinyEngine/Renderer/UIImageHandle.h"
 #include "TinyEngine/Renderer/DebugDrawCommon.h" // the screen-overlay scratch's element type
 #include <chrono>
@@ -99,6 +100,10 @@ struct WindowContext
 	uint64_t FocusStamp = 0;
 };
 
+// The named faces (the theme fonts in their smallest form). The app
+// registers them after Init; an unregistered role answers the Regular face.
+enum class FontRole : uint8_t { Regular, Medium, SemiBold, Mono, Icons, Count };
+
 class UIApplication
 {
 public:
@@ -112,6 +117,23 @@ public:
 	static bool ReloadFont(const std::string& assetPath);
 	static UIApplication& Get() { return *s_Instance; }
 	static bool IsValid() { return s_Instance != nullptr; }
+
+	FontCache* GetFontCache() const { return m_FontCache; }
+	// (A registered flag, not InvalidFont: FontCache hands out handle 0 to
+	// its first face.)
+	void SetFont(FontRole role, FontHandle font) { m_Fonts[(size_t)role] = font; m_FontSet[(size_t)role] = true; }
+	FontHandle GetFont(FontRole role) const
+	{
+		return m_FontSet[(size_t)role] ? m_Fonts[(size_t)role] : m_Fonts[(size_t)FontRole::Regular];
+	}
+	// The registered handle, or `fallback` when Wisp is not up / the role
+	// was never registered (lets widgets ask without a null check).
+	static FontHandle FontOr(FontRole role, FontHandle fallback)
+	{
+		if (!s_Instance || !s_Instance->m_FontSet[(size_t)role])
+			return fallback;
+		return s_Instance->m_Fonts[(size_t)role];
+	}
 
 	// ---- Window contexts ----
 
@@ -367,6 +389,8 @@ private:
 	std::unique_ptr<RendererVulkan> m_Renderer;
 
 	FontCache* m_FontCache = nullptr;
+	FontHandle m_Fonts[(size_t)FontRole::Count] = {};
+	bool m_FontSet[(size_t)FontRole::Count] = {};
 
 	// Global by design: one focused widget in the whole app (living in the
 	// OS-focused window), one drag operation at a time (the router records

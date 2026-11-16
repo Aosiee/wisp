@@ -6,6 +6,11 @@
 #include "Wisp/Application.h"
 #include "Wisp/Style.h"
 #include "Wisp/Theme.h"
+#include "Wisp/Composites/PopupMenu.h"
+#include "Wisp/Components/Button.h"
+#include "Wisp/Components/TextBlock.h"
+#include "Wisp/Icons.h"
+#include "Wisp/StyleTokens.h"
 #include <functional>
 #include <string>
 #include <vector>
@@ -63,7 +68,7 @@ namespace wisp {
 	{
 		SetSupportsFocus(true);
 		m_BgStyle = PanelStyle();
-		m_BgStyle.Background.Tint = { 0.12f, 0.12f, 0.18f, 1.0f };
+		m_BgStyle.Background.Tint = tokens::Field;
 	}
 
 	// The section-header marker (the leading \x01 byte) - such an
@@ -114,7 +119,7 @@ namespace wisp {
 			auto s = m_FontCache->MeasureText(m_Font, o, m_FontSize);
 			maxW = std::max(maxW, s.x);
 		}
-		return { std::max(maxW + 30.0f, 120.0f), 24.0f };
+		return { std::max(maxW + 36.0f, 120.0f), tokens::FieldHeight + 2.0f };
 	}
 
 	void ArrangeChildren(const Geometry&, ArrangedChildren&) const override {}
@@ -134,29 +139,38 @@ namespace wisp {
 		float w = geom.LocalSize.x, h = geom.LocalSize.y;
 		int clipIdx = args.InheritedClipIndex;
 
-		glm::vec4 bg = m_IsHovered ? m_BgStyle.Background.Tint * 1.3f : m_BgStyle.Background.Tint;
-		drawList.AddBox(layerId, absPos, {w,h}, bg, clipIdx);
-		drawList.AddBox(layerId+1, absPos, {w,1}, glm::vec4(0.25f,0.25f,0.35f,1), clipIdx);
-		drawList.AddBox(layerId+1, {absPos.x, absPos.y+h-1}, {w,1}, glm::vec4(0.25f,0.25f,0.35f,1), clipIdx);
+		// The field look + a chevron icon.
+		const glm::vec4 bg = m_IsHovered ? tokens::FieldHover : m_BgStyle.Background.Tint;
+		const float r = tokens::RadiusSmall;
+		const float rr[4] = { r, r, r, r };
+		drawList.AddRoundedBox(layerId, absPos, { w, h }, bg, rr, 1.0f,
+			(UIApplication::IsValid() && UIApplication::Get().GetFocusWidget() == this) ? tokens::Accent : (m_IsHovered ? tokens::BorderStrong : tokens::Border), clipIdx);
 
-		// Arrow indicator
-		drawList.AddBox(layerId+2, {absPos.x+w-20, absPos.y+8}, {8,4}, glm::vec4(0.5f,0.5f,0.6f,1), clipIdx);
+		if (m_FontCache)
+		{
+			const FontHandle iconFont = UIApplication::FontOr(FontRole::Icons, m_Font);
+			const float iconPx = 13.0f;
+			const FontMetrics im = m_FontCache->GetMetrics(iconFont, iconPx);
+			popupmenu::PaintRun(drawList, m_FontCache, iconFont, iconPx,
+				{ std::round(absPos.x + w - 20.0f), std::round(absPos.y + (h - im.LineHeight) * 0.5f + im.Ascent) },
+				icons::ChevronDown, m_IsHovered ? tokens::TextPrimary : tokens::TextSecondary, layerId + 2, clipIdx);
+		}
 
-		// Selected text
+		// Selected text (truncated against the chevron)
 		if (!m_Options.empty() && m_FontCache)
 		{
 			FontMetrics m = m_FontCache->GetMetrics(m_Font, m_FontSize);
-			float tx = absPos.x + 6, ty = absPos.y + (h - m.LineHeight) * 0.5f;
-			m_FontCache->MeasureText(m_Font, m_Options[m_SelectedIdx], m_FontSize);
-			const uint8_t* p = (const uint8_t*)m_Options[m_SelectedIdx].data();
-			const uint8_t* e = p + m_Options[m_SelectedIdx].size();
-			while (p < e)
+			const float ty = std::round(absPos.y + (h - m.LineHeight) * 0.5f + m.Ascent);
+			std::string text = m_Options[m_SelectedIdx];
+			const float limit = w - 32.0f;
+			if (limit > 0.0f && m_FontCache->MeasureText(m_Font, text, m_FontSize).x > limit)
 			{
-				uint32_t cp;
-				if((*p&0x80)==0){cp=*p;p++;}else if((*p&0xE0)==0xC0&&p+1<e){cp=((*p&0x1F)<<6)|(p[1]&0x3F);p+=2;}else if((*p&0xF0)==0xE0&&p+2<e){cp=((*p&0x0F)<<12)|((p[1]&0x3F)<<6)|(p[2]&0x3F);p+=3;}else{p++;continue;}
-				const GlyphInfo* gi = m_FontCache->GetGlyph(m_Font, cp, m_FontSize);
-				if(gi){glm::vec2 uv[4]={{gi->AtlasU0,gi->AtlasV0},{gi->AtlasU1,gi->AtlasV0},{gi->AtlasU1,gi->AtlasV1},{gi->AtlasU0,gi->AtlasV1}};drawList.AddText(layerId+3,{tx,ty+m.Ascent+gi->BearingY},std::string(1,(char)cp),uv,gi->AdvanceX,gi->Height,glm::vec4(1,1,1,1),clipIdx);tx+=gi->AdvanceX;}
+				while (!text.empty() && m_FontCache->MeasureText(m_Font, text + "...", m_FontSize).x > limit)
+					text.pop_back();
+				text += "...";
 			}
+			popupmenu::PaintRun(drawList, m_FontCache, m_Font, m_FontSize, { std::round(absPos.x + 8.0f), ty },
+				text, tokens::TextPrimary, layerId + 3, clipIdx);
 		}
 		return layerId+4;
 	}
@@ -188,40 +202,28 @@ namespace wisp {
 				// legacy flat sections) - the items below read indented.
 				if (IsHeaderOption(m_Options[i]))
 				{
-					auto label = std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize * 0.85f, HeaderLabel(m_Options[i]),
-						glm::vec4(0.5f, 0.55f, 0.65f, 1.0f));
-					flatList->AddChild(std::move(label));
+					flatList->AddChild(std::make_unique<PopupMenuRow>(m_FontCache, m_Font, m_FontSize,
+						PopupMenuEntry::MakeHeader(HeaderLabel(m_Options[i]))));
 					continue;
 				}
-				auto label = std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize, m_Options[i],
-					i == m_SelectedIdx ? glm::vec4(0.3f,0.7f,1.0f,1) : glm::vec4(0.8f,0.8f,0.8f,1));
-				auto row = std::make_unique<Button>();
-				row->SetNormalBrush({glm::vec4(0.08f,0.08f,0.12f,1)});
-				row->SetHoveredBrush({glm::vec4(0.15f,0.15f,0.22f,1)});
-				row->SetPressedBrush({glm::vec4(0.05f,0.05f,0.1f,1)});
-				row->SetOnClicked([this, idx]() {
+				PopupMenuEntry e;
+				e.Label = m_Options[i];
+				e.Checkable = true;
+				e.Checked = (i == m_SelectedIdx);
+				e.Action = [this, idx]() {
 					SetSelectedIndex(idx);
 					m_OnChanged(idx, m_Options[idx]);
-					UIApplication::Get().RequestDismissPopups();
-				});
-				row->SetChild(std::move(label));
-				flatList->AddChild(std::move(row));
+				};
+				flatList->AddChild(std::make_unique<PopupMenuRow>(m_FontCache, m_Font, m_FontSize, std::move(e)));
 			}
 		}
 
-		auto popupBorder = std::make_unique<Border>();
-		popupBorder->SetBrush({glm::vec4(0.08f,0.08f,0.12f,0.95f)});
-		popupBorder->SetPadding(2);
-		popupBorder->SetChild(std::move(list));
-
-		auto sized = std::make_unique<SizeBox>();
-		sized->SetWidthOverride(m_CachedWidth);
-		sized->SetChild(std::move(popupBorder));
+		auto sized = std::make_unique<PopupFrame>(std::move(list), std::max(m_CachedWidth - popupmenu::kPad * 2.0f, 140.0f));
 		// The popup anchors below the dropdown's own height (the cached
 		// desired size is zero until the first arrangement - the
 		// ComputeDesiredSize's floor covers the click-time case).
 		float anchorY = m_CachedAbsY + (GetCachedDesiredSize().y > 0.0f ? GetCachedDesiredSize().y : ComputeDesiredSize().y);
-		UIApplication::Get().ShowPopupAt(std::move(sized), {m_CachedAbsX, anchorY});
+		UIApplication::Get().ShowPopupAt(std::move(sized), {m_CachedAbsX, anchorY + 2.0f});
 		return Reply::Handled_();
 	}
 
@@ -252,24 +254,24 @@ private:
 			if (node.IsBranch)
 			{
 				auto row = std::make_unique<SubmenuRow>();
-				row->SetNormalBrush({ glm::vec4(0.08f, 0.08f, 0.12f, 1) });
-				row->SetHoveredBrush({ glm::vec4(0.15f, 0.15f, 0.22f, 1) });
-				row->SetPressedBrush({ glm::vec4(0.05f, 0.05f, 0.1f, 1) });
-				row->SetChild(std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize, node.Label + " >",
-					glm::vec4(0.8f, 0.8f, 0.8f, 1)));
+				row->SetNormalBrush({ tokens::WithAlpha(tokens::Popup, 0.0f) });
+				row->SetHoveredBrush({ tokens::Hover });
+				row->SetPressedBrush({ tokens::Pressed });
+				row->SetContentPadding({ popupmenu::kLeadColumn, 5.0f, 8.0f, 5.0f });
+				{
+					auto rowBox = std::make_unique<HorizontalBox>(BoxOrientation::Horizontal);
+					*rowBox
+						+ rowBox->AddSlot().Fill(1.0f)[ std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize, node.Label, tokens::TextPrimary) ]
+						+ rowBox->AddSlot()[ std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize, icons::ChevronRight, tokens::TextMuted) ];
+					row->SetChild(std::move(rowBox));
+				}
 				row->SetOnEntered([this, node, leafIndex, anchorX, keepCount](const glm::vec2& rowAbsPos) {
 					// The new submenu replaces the previously hovered one
 					// at THIS depth - the ancestor popups (the rows above
 					// this level) stay, the deeper siblings go.
 					UIApplication::Get().DismissPopupsBeyond(keepCount);
 					auto subList = BuildTreePopup(node.Children, leafIndex, anchorX + m_CachedWidth, keepCount + 1);
-					auto subBorder = std::make_unique<Border>();
-					subBorder->SetBrush({ glm::vec4(0.08f, 0.08f, 0.12f, 0.95f) });
-					subBorder->SetPadding(2);
-					subBorder->SetChild(std::move(subList));
-					auto sized = std::make_unique<SizeBox>();
-					sized->SetWidthOverride(m_CachedWidth);
-					sized->SetChild(std::move(subBorder));
+					auto sized = std::make_unique<PopupFrame>(std::move(subList), std::max(m_CachedWidth - popupmenu::kPad * 2.0f, 140.0f));
 					// The submenu opens beside this level's popup at the
 					// HOVERED row's height (the cascade).
 					UIApplication::Get().ShowPopupAt(std::move(sized), { anchorX + m_CachedWidth, rowAbsPos.y });
@@ -286,19 +288,15 @@ private:
 					if (m_NodeValues[k] == node.Value) { idx = (int)k; break; }
 				if (idx < 0)
 					idx = (*leafIndex)++;
-				auto label = std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize, node.Label,
-					idx == m_SelectedIdx ? glm::vec4(0.3f, 0.7f, 1.0f, 1) : glm::vec4(0.8f, 0.8f, 0.8f, 1));
-				auto row = std::make_unique<Button>();
-				row->SetNormalBrush({ glm::vec4(0.08f, 0.08f, 0.12f, 1) });
-				row->SetHoveredBrush({ glm::vec4(0.15f, 0.15f, 0.22f, 1) });
-				row->SetPressedBrush({ glm::vec4(0.05f, 0.05f, 0.1f, 1) });
-				row->SetOnClicked([this, idx, node]() {
+				PopupMenuEntry e;
+				e.Label = node.Label;
+				e.Checkable = true;
+				e.Checked = (idx == m_SelectedIdx);
+				e.Action = [this, idx, node]() {
 					SetSelectedIndex(idx);
 					m_OnChanged(idx, node.Value);
-					UIApplication::Get().RequestDismissPopups();
-				});
-				row->SetChild(std::move(label));
-				list->AddChild(std::move(row));
+				};
+				list->AddChild(std::make_unique<PopupMenuRow>(m_FontCache, m_Font, m_FontSize, std::move(e)));
 			}
 		}
 		return list;

@@ -15,8 +15,22 @@ public:
 	TextBlock(FontCache* fontCache, FontHandle font, float fontSize, const std::string& text, const glm::vec4& colour = { 1,1,1,1 })
 		: m_FontCache(fontCache), m_Font(font), m_FontSize(fontSize), m_Text(text), m_Colour(colour) { SetVisibility(Visibility::SelfHitTestInvisible); }
 
-	void SetText(const std::string& t) { if (m_Text != t) { m_Text = t; InvalidateLayout(); } }
+	void SetText(const std::string& t)
+	{
+		if (m_Text == t)
+			return;
+		m_Text = t;
+		// A content-sized block (an auto slot in a row) cached its OLD
+		// text's width as the wrap width - measured against it, a longer
+		// new text would wrap there for good ("of 2.0 ms budget" on three
+		// lines). Re-measure unwrapped; a real width limit re-applies at
+		// the next paint.
+		if (m_WrapFromContent)
+			m_CachedWrapWidth = -1.0f;
+		InvalidateLayout();
+	}
 	TextBlock& Text(const std::string& t) { SetText(t); return *this; }
+	void SetColour(const glm::vec4& c) { m_Colour = c; }
 
 	void SetWrapMode(WrapMode m) { m_WrapMode = m; InvalidateLayout(); }
 	void SetWrapWidth(float w) { m_WrapWidth = w; InvalidateLayout(); }
@@ -38,7 +52,9 @@ public:
 			wrapW = m_AutoWrap ? m_CachedWrapWidth : m_WrapWidth;
 		if (m_AutoWrap && m_CachedWrapWidth <= 0)
 			wrapW = -1.0f;
-		return m_FontCache->MeasureText(m_Font, m_Text, m_FontSize, wrapW, m_WrapMode);
+		const glm::vec2 measured = m_FontCache->MeasureText(m_Font, m_Text, m_FontSize, wrapW, m_WrapMode);
+		m_MeasuredWidth = measured.x;
+		return measured;
 	}
 
 	void ArrangeChildren(const Geometry&, ArrangedChildren&) const override {}
@@ -58,6 +74,7 @@ public:
 		if (m_AutoWrap && effectiveWrap <= 0)
 			effectiveWrap = geom.LocalSize.x;
 		m_CachedWrapWidth = (effectiveWrap > 0) ? effectiveWrap : -1.0f;
+		m_WrapFromContent = m_AutoWrap && m_WrapWidth <= 0 && geom.LocalSize.x <= m_MeasuredWidth + 0.5f;
 
 		// The single-line ellipsis - the text truncates with
 		// "..." against the widget's ARRANGED width (the fixed label/
@@ -79,7 +96,13 @@ public:
 		const uint8_t* p = (const uint8_t*)displayText.data();
 		const uint8_t* end = p + displayText.size();
 		uint32_t prevCp = 0;
-		const uint8_t* lastSpaceP = nullptr;
+		// The wrap decisions run on the UNROUNDED line width, the same
+		// arithmetic MeasureText uses - the pen's per-glyph rounding made a
+		// label arranged at exactly its measured width overflow by a pixel,
+		// wrap its last word, re-measure narrower and ratchet down to one
+		// word per line ("Capture / All").
+		const float wrapLimit = absRight - penX + 0.5f;
+		float lineW = 0.0f;
 
 		while (p < end)
 		{
@@ -89,7 +112,7 @@ public:
 			else if ((*p & 0xF0) == 0xE0 && p+2<end) { cp = ((*p & 0x0F)<<12)|((p[1]&0x3F)<<6)|(p[2]&0x3F); p+=3; }
 			else { p++; continue; }
 
-			if (cp == '\n') { penX = std::floor(geom.LocalToAbsolute({0,0}).x); penY += metrics.LineHeight; prevCp = 0; lastSpaceP = nullptr; continue; }
+			if (cp == '\n') { penX = std::floor(geom.LocalToAbsolute({0,0}).x); lineW = 0.0f; penY += metrics.LineHeight; prevCp = 0; continue; }
 
 			const GlyphInfo* gi = m_FontCache->GetGlyph(m_Font, cp, m_FontSize);
 			if (!gi) continue;
@@ -98,34 +121,23 @@ public:
 			if (prevCp)
 				advance += m_FontCache->GetKerning(m_Font, prevCp, cp, m_FontSize);
 
-			// Check for wrap before placing this glyph
-			bool overflow = (effectiveWrap > 0.0f && penX + advance > absRight && penX > geom.LocalToAbsolute({0,0}).x);
-			if (overflow && m_WrapMode == WrapMode::Word && lastSpaceP)
-			{
-				p = lastSpaceP;
-				penX = std::floor(geom.LocalToAbsolute({0,0}).x);
-				prevCp = 0;
-				lastSpaceP = nullptr;
-				penY += metrics.LineHeight;
-				continue;
-			}
-			if (overflow && m_WrapMode == WrapMode::Character)
+			// A Word-mode overflow mid-word means the word alone is wider than
+			// the line (the space look-ahead below moves every word that fits
+			// to the next line): break it here, like MeasureText does. The old
+			// rewind to the last space re-drew the word on the next line over
+			// the glyphs already painted on this one ("(scenes: / (scenes:").
+			bool overflow = (effectiveWrap > 0.0f && lineW + advance > wrapLimit + 0.01f && lineW > 0.0f);
+			if (overflow && m_WrapMode != WrapMode::None)
 			{
 				penX = std::floor(geom.LocalToAbsolute({0,0}).x);
+				lineW = 0.0f;
 				penY += metrics.LineHeight;
 				prevCp = 0;
 			}
 
-			float x = penX + gi->BearingX;
-			float y = std::round(penY + metrics.Ascent + gi->BearingY);
+			AddGlyph(drawList, layerId, { penX, std::round(penY + metrics.Ascent) }, *gi, tint, args.InheritedClipIndex);
 
-			glm::vec2 atlasUVs[4] = {
-				{ gi->AtlasU0, gi->AtlasV0 }, { gi->AtlasU1, gi->AtlasV0 },
-				{ gi->AtlasU1, gi->AtlasV1 }, { gi->AtlasU0, gi->AtlasV1 } };
-
-			drawList.AddText(layerId, { x, y }, std::string(1, (char)cp), atlasUVs, gi->AdvanceX, gi->Height, tint, args.InheritedClipIndex);
-
-			// Track space position for word-wrap
+			// Word wrap: at each space, move the next word down if it will not fit
 			if (cp == ' ')
 			{
 				// Look ahead: if next word won't fit, break now
@@ -144,24 +156,23 @@ public:
 						if (lcp == ' ' || lcp == '\n') break;
 						const GlyphInfo* lgi = m_FontCache->GetGlyph(m_Font, lcp, m_FontSize);
 						float la = lgi ? lgi->AdvanceX : 0;
-						if (lookPrev != ' ')
-							la += m_FontCache->GetKerning(m_Font, lookPrev, lcp, m_FontSize);
-						wordWidth += std::round(la);
+						la += m_FontCache->GetKerning(m_Font, lookPrev, lcp, m_FontSize);
+						wordWidth += la;
 						lookPrev = lcp;
 					}
-					if (penX + advance + wordWidth > absRight && penX > geom.LocalToAbsolute({0,0}).x)
+					if (lineW + advance + wordWidth > wrapLimit && lineW > 0.0f)
 					{
 						penX = std::floor(geom.LocalToAbsolute({0,0}).x);
+						lineW = 0.0f;
 						penY += metrics.LineHeight;
 						prevCp = 0;
-						lastSpaceP = nullptr;
 						continue; // skip drawing the space, start fresh on new line
 					}
 				}
-				lastSpaceP = p;
 			}
 
 			penX += std::round(advance);
+			lineW += advance;
 			prevCp = cp;
 		}
 		// If text wrapped beyond measured height, invalidate for next-frame reflow
@@ -185,6 +196,8 @@ private:
 	bool            m_AutoWrap = true;
 	float           m_WrapWidth = -1.0f;
 	mutable float   m_CachedWrapWidth = -1.0f;
+	mutable float   m_MeasuredWidth = 0.0f;
+	mutable bool    m_WrapFromContent = false;
 	mutable uint64_t m_MeasuredGeneration = 0;
 	float           m_PaddingRight = 0.0f;
 };

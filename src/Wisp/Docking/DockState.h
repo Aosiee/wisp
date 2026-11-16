@@ -275,6 +275,15 @@ public:
 		return 0;
 	}
 
+	// An optional icon string per panel (an icons:: glyph) - the tab
+	// paints it ahead of the title.
+	void SetPanelIcon(const dock::PanelId& id, std::string icon) { m_Icons[id] = std::move(icon); }
+	std::string IconOf(const dock::PanelId& id) const
+	{
+		auto it = m_Icons.find(id);
+		return it != m_Icons.end() ? it->second : std::string();
+	}
+
 	std::string DisplayNameOf(const dock::PanelId& id) const
 	{
 		auto it = m_Registry.find(id);
@@ -475,6 +484,7 @@ public:
 
 private:
 	std::unordered_map<dock::PanelId, PanelDef> m_Registry;
+	std::unordered_map<dock::PanelId, std::string> m_Icons;
 	std::vector<dock::PanelId> m_RegistrationOrder;
 	dock::DockLayout m_Model;
 	std::unordered_map<dock::PanelId, std::shared_ptr<Widget>> m_Cache;

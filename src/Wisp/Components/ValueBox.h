@@ -15,6 +15,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include "Wisp/StyleTokens.h"
+#include "Wisp/Composites/PopupMenu.h"
+#include "Wisp/Icons.h"
 
 namespace wisp {
 
@@ -27,9 +30,10 @@ public:
 	TValueBox(FontCache* fc, FontHandle font, float fontSize, T initialValue = T{})
 		: m_FontCache(fc), m_Font(font), m_FontSize(fontSize)
 	{
-		m_BgStyle.Background.Tint = { 0.08f, 0.08f, 0.12f, 1.0f };
+		m_BgStyle.Background.Tint = wisp::tokens::Field;
 		SetSupportsFocus(true);
 		m_EditText = std::make_unique<EditableText>(fc, font, fontSize);
+		m_EditText->SetFrameless(true);
 		SetupParentChild(this, m_EditText.get());
 		m_EditText->SetOnTextChanged([this](const std::string&) {
 			m_EditTextDirty = true;
@@ -39,10 +43,11 @@ public:
 		SetupParentChild(this, m_DecBtn.get());
 		m_DecBtn->SetSupportsFocus(false);
 		m_DecBtn->SetOnClicked([this]() { Decrement(); });
-		m_DecBtn->SetNormalBrush({glm::vec4(0.15f,0.15f,0.22f,1)});
-		m_DecBtn->SetHoveredBrush({glm::vec4(0.22f,0.22f,0.3f,1)});
-		m_DecBtn->SetPressedBrush({glm::vec4(0.1f,0.1f,0.16f,1)});
-		auto decLabel = std::make_unique<TextBlock>(fc, font, fontSize * 0.7f, "-", glm::vec4(0.8f,0.8f,0.8f,1));
+		m_DecBtn->SetNormalBrush({tokens::WithAlpha(tokens::Control, 0.0f)});
+		m_DecBtn->SetHoveredBrush({tokens::Hover});
+		m_DecBtn->SetPressedBrush({tokens::Pressed});
+		m_DecBtn->SetContentPadding({ 4.0f, 2.0f, 4.0f, 2.0f });
+		auto decLabel = std::make_unique<TextBlock>(fc, UIApplication::FontOr(FontRole::Icons, font), 11.0f, icons::ChevronLeft, tokens::TextMuted);
 		SetupParentChild(m_DecBtn.get(), decLabel.get());
 		m_DecBtn->SetChild(std::move(decLabel));
 
@@ -50,10 +55,11 @@ public:
 		SetupParentChild(this, m_IncBtn.get());
 		m_IncBtn->SetSupportsFocus(false);
 		m_IncBtn->SetOnClicked([this]() { Increment(); });
-		m_IncBtn->SetNormalBrush({glm::vec4(0.15f,0.15f,0.22f,1)});
-		m_IncBtn->SetHoveredBrush({glm::vec4(0.22f,0.22f,0.3f,1)});
-		m_IncBtn->SetPressedBrush({glm::vec4(0.1f,0.1f,0.16f,1)});
-		auto incLabel = std::make_unique<TextBlock>(fc, font, fontSize * 0.7f, "+", glm::vec4(0.8f,0.8f,0.8f,1));
+		m_IncBtn->SetNormalBrush({tokens::WithAlpha(tokens::Control, 0.0f)});
+		m_IncBtn->SetHoveredBrush({tokens::Hover});
+		m_IncBtn->SetPressedBrush({tokens::Pressed});
+		m_IncBtn->SetContentPadding({ 4.0f, 2.0f, 4.0f, 2.0f });
+		auto incLabel = std::make_unique<TextBlock>(fc, UIApplication::FontOr(FontRole::Icons, font), 11.0f, icons::ChevronRight, tokens::TextMuted);
 		SetupParentChild(m_IncBtn.get(), incLabel.get());
 		m_IncBtn->SetChild(std::move(incLabel));
 
@@ -106,31 +112,34 @@ public:
 
 	glm::vec2 ComputeDesiredSize() const override
 	{
-		float btnW = m_ShowButtons ? 48.0f : 0.0f;
+		float btnW = m_ShowButtons ? 40.0f : 0.0f;
 		float editW = m_EditText->ComputeDesiredSize().x;
-		float h = std::max(m_EditText->ComputeDesiredSize().y, 24.0f);
-		float indictW = m_HasIndicator ? h : 0.0f;
+		float h = std::max(m_EditText->ComputeDesiredSize().y, tokens::FieldHeight);
+		float indictW = m_HasIndicator ? kIndicatorW : 0.0f;
 		return { std::max(editW + btnW + indictW + 8.0f, m_MinimumWidth), h };
 	}
 
 	void ArrangeChildren(const Geometry& geom, ArrangedChildren& out) const override
 	{
 		float w = geom.LocalSize.x, h = geom.LocalSize.y;
-		float btnW = 22.0f, btnOff = 2.0f;
-		float indictW = m_HasIndicator ? h : 0.0f;
+		float btnW = 18.0f, btnOff = 2.0f;
+		float indictW = m_HasIndicator ? kIndicatorW : 0.0f;
 		float x = indictW;
 
-		if (m_ShowButtons)
+		// The steppers drop out when the field is too narrow to show both
+		// them and a readable value (the 3-up vector rows in a slim dock).
+		const bool buttons = m_ShowButtons && (w - indictW) >= 96.0f;
+		if (buttons)
 		{
 			out.Add(m_DecBtn.get(), geom.MakeChild({x + btnOff, btnOff}, {btnW, h - btnOff * 2}));
 			x += btnW + btnOff + 2.0f;
 		}
 		float editStart = x + 2.0f;
 		float editW = w - editStart;
-		if (m_ShowButtons) editW -= (btnW + btnOff + 4.0f);
+		if (buttons) editW -= (btnW + btnOff + 4.0f);
 		out.Add(m_EditText.get(), geom.MakeChild({editStart, 1.0f}, {std::max(editW, 10.0f), h - 2.0f}));
 
-		if (m_ShowButtons)
+		if (buttons)
 		{
 			float incX = w - btnW - btnOff;
 			out.Add(m_IncBtn.get(), geom.MakeChild({incX, btnOff}, {btnW, h - btnOff * 2}));
@@ -149,41 +158,31 @@ public:
 		float w = geom.LocalSize.x, h = geom.LocalSize.y;
 		int clipIdx = args.InheritedClipIndex;
 
-		glm::vec4 base = m_BgStyle.Background.Tint;
-		glm::vec4 bgCol = m_IsError ? glm::vec4(0.18f, 0.06f, 0.06f, 1.0f)
-			: (m_EditText->HasFocus() ? base * 1.5f
-			: (m_IsHovered ? base * 1.25f : base));
-		drawList.AddBox(layerId, absPos, {w, h}, bgCol, clipIdx);
-		drawList.AddBox(layerId + 1, absPos, {w, 1}, glm::vec4(0.2f, 0.2f, 0.3f, 1.0f), clipIdx);
-		drawList.AddBox(layerId + 1, {absPos.x, absPos.y + h - 1}, {w, 1}, glm::vec4(0.2f, 0.2f, 0.3f, 1.0f), clipIdx);
+		// One rounded field (the inner edit text is frameless) whose
+		// border becomes the focus ring; the axis indicator is a rounded
+		// chip on the left edge (UE-style X/Y/Z).
+		const bool focused = m_EditText->HasFocus();
+		const glm::vec4 bgCol = m_IsError ? tokens::WithAlpha(tokens::Error, 0.14f)
+			: (m_IsHovered && !focused ? tokens::FieldHover : m_BgStyle.Background.Tint);
+		const glm::vec4 border = m_IsError ? tokens::Error
+			: (focused ? tokens::Accent : (m_IsHovered ? tokens::BorderStrong : tokens::Border));
+		const float r = tokens::RadiusSmall;
+		const float rr[4] = { r, r, r, r };
+		drawList.AddRoundedBox(layerId, absPos, {w, h}, bgCol, rr, 1.0f, border, clipIdx);
 
 		if (m_HasIndicator)
 		{
-			drawList.AddBox(layerId + 2, absPos, {h, h}, m_IndicatorColour, clipIdx);
+			const float ir[4] = { r, 0.0f, 0.0f, r };
+			drawList.AddRoundedBox(layerId + 2, absPos, {kIndicatorW, h}, m_IndicatorColour, ir, 0.0f, glm::vec4(0.0f), clipIdx);
 			if (!m_IndicatorLabel.empty() && m_FontCache)
 			{
-				FontMetrics fm = m_FontCache->GetMetrics(m_Font, m_FontSize * 0.7f);
-				float labelW = m_FontCache->MeasureText(m_Font, m_IndicatorLabel, m_FontSize * 0.7f).x;
-				float lx = absPos.x + (h - labelW) * 0.5f;
-				float ly = absPos.y + (h - fm.LineHeight) * 0.5f;
-				const uint8_t* p = (const uint8_t*)m_IndicatorLabel.data();
-				const uint8_t* e = p + m_IndicatorLabel.size();
-				while (p < e)
-				{
-					uint32_t cp;
-					if((*p&0x80)==0){cp=*p;p++;}else if((*p&0xE0)==0xC0&&p+1<e){cp=((*p&0x1F)<<6)|(p[1]&0x3F);p+=2;}else if((*p&0xF0)==0xE0&&p+2<e){cp=((*p&0x0F)<<12)|((p[1]&0x3F)<<6)|(p[2]&0x3F);p+=3;}else{p++;continue;}
-					const GlyphInfo* g = m_FontCache->GetGlyph(m_Font, cp, m_FontSize * 0.7f);
-					if(g)
-					{
-						glm::vec2 uv[4]={{g->AtlasU0,g->AtlasV0},{g->AtlasU1,g->AtlasV0},{g->AtlasU1,g->AtlasV1},{g->AtlasU0,g->AtlasV1}};
-						// Outlined so the letter stays legible over any
-						// channel-tinted indicator swatch.
-						drawList.AddTextOutlined(layerId + 3, {lx + g->BearingX, ly + fm.Ascent + g->BearingY},
-							std::string(1,(char)cp), uv, g->AdvanceX, g->Height, glm::vec4(1,1,1,1),
-							glm::vec4(0.0f,0.0f,0.0f,0.9f), 1.0f, clipIdx);
-						lx += g->AdvanceX;
-					}
-				}
+				const FontHandle bold = UIApplication::FontOr(FontRole::SemiBold, m_Font);
+				const float size = tokens::FontSmall;
+				FontMetrics fm = m_FontCache->GetMetrics(bold, size);
+				float labelW = m_FontCache->MeasureText(bold, m_IndicatorLabel, size).x;
+				popupmenu::PaintRun(drawList, m_FontCache, bold, size,
+					{ std::round(absPos.x + (kIndicatorW - labelW) * 0.5f), std::round(absPos.y + (h - fm.LineHeight) * 0.5f + fm.Ascent) },
+					m_IndicatorLabel, tokens::TextOnAccent, layerId + 3, clipIdx);
 			}
 		}
 
@@ -233,6 +232,8 @@ public:
 	bool SupportsFocus() const override { return m_SupportsFocus; }
 
 private:
+	static constexpr float kIndicatorW = 18.0f;
+
 	static T DefaultStep()
 	{
 		if constexpr (std::is_same_v<T, float>) return T(0.1);
@@ -365,9 +366,10 @@ public:
 	TValueBox(FontCache* fc, FontHandle font, float fontSize, std::string initialValue = "")
 		: m_FontCache(fc), m_Font(font), m_FontSize(fontSize)
 	{
-		m_BgStyle.Background.Tint = { 0.08f, 0.08f, 0.12f, 1.0f };
+		m_BgStyle.Background.Tint = wisp::tokens::Field;
 		SetSupportsFocus(true);
 		m_EditText = std::make_unique<EditableText>(fc, font, fontSize);
+		m_EditText->SetFrameless(true);
 		SetupParentChild(this, m_EditText.get());
 		m_EditText->SetOnTextChanged([this](const std::string&) { m_EditTextDirty = true; });
 		SetValue(std::move(initialValue));
@@ -410,12 +412,11 @@ public:
 		float w = geom.LocalSize.x, h = geom.LocalSize.y;
 		int clipIdx = args.InheritedClipIndex;
 
-		glm::vec4 base = m_BgStyle.Background.Tint;
-		glm::vec4 bgCol = m_EditText->HasFocus() ? base * 1.5f
-			: (m_IsHovered ? base * 1.25f : base);
-		drawList.AddBox(layerId, absPos, {w, h}, bgCol, clipIdx);
-		drawList.AddBox(layerId + 1, absPos, {w, 1}, glm::vec4(0.2f, 0.2f, 0.3f, 1.0f), clipIdx);
-		drawList.AddBox(layerId + 1, {absPos.x, absPos.y + h - 1}, {w, 1}, glm::vec4(0.2f, 0.2f, 0.3f, 1.0f), clipIdx);
+		const bool focused = m_EditText->HasFocus();
+		const float r = tokens::RadiusSmall;
+		const float rr[4] = { r, r, r, r };
+		drawList.AddRoundedBox(layerId, absPos, {w, h}, m_IsHovered && !focused ? tokens::FieldHover : m_BgStyle.Background.Tint,
+			rr, 1.0f, focused ? tokens::Accent : (m_IsHovered ? tokens::BorderStrong : tokens::Border), clipIdx);
 
 		bool hadFocus = m_EditHadFocus;
 		m_EditHadFocus = m_EditText->HasFocus();

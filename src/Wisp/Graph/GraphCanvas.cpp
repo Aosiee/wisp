@@ -21,6 +21,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include "Wisp/StyleTokens.h"
 
 namespace wisp {
 namespace graph {
@@ -129,11 +130,13 @@ namespace graph {
 			if (text.empty())
 				return nullptr;
 			auto block = std::make_unique<wisp::TextBlock>(m_FontCache, m_Font, m_BaseTitleSize,
-				text, glm::vec4(0.95f, 0.95f, 1.0f, 1.0f));
+				text, wisp::tokens::TextPrimary);
 			block->SetWrapMode(wisp::WrapMode::Word);
 			block->SetAutoWrap(true);
 			auto border = std::make_unique<wisp::Border>();
-			border->SetBrush({ glm::vec4(0.1f, 0.1f, 0.16f, 0.97f) });
+			border->SetBrush({ wisp::tokens::Popup });
+			border->SetCornerRadii(wisp::tokens::RadiusMedium + 1.0f);
+			border->SetOutline(1.0f, wisp::tokens::BorderStrong);
 			border->SetPadding(8.0f, 6.0f);
 			border->SetChild(std::move(block));
 			auto sized = std::make_unique<wisp::SizeBox>();
@@ -215,7 +218,7 @@ namespace graph {
 			}
 		}
 
-		dl.AddBox(layerId, m_Origin, m_Size, { 0.05f, 0.05f, 0.09f, 1.0f }, args.InheritedClipIndex);
+		dl.AddBox(layerId, m_Origin, m_Size, wisp::tokens::Panel, args.InheritedClipIndex);
 		const int bodyClip = dl.PushClip({ m_Origin.x, m_Origin.y, m_Size.x, m_Size.y }, args.InheritedClipIndex);
 
 		// The visible world rect (the culling window).
@@ -648,12 +651,12 @@ namespace graph {
 			}
 			else if (hovered)
 			{
-				outline = { 0.6f, 0.8f, 1.0f, 0.9f };
+				outline = wisp::tokens::TextLink;
 				outlineWidth = 1.25f;
 			}
 			else if (broken)
 			{
-				outline = { 0.9f, 0.3f, 0.3f, 1.0f };
+				outline = wisp::tokens::Error;
 				outlineWidth = 1.5f;
 			}
 
@@ -672,7 +675,7 @@ namespace graph {
 				const glm::vec2 w = m_FontCache->MeasureText(m_Font, title, textSize);
 				PaintTextScaled(dl, layer + 1, clip,
 					{ pos.x + (size.x - w.x) * 0.5f, pos.y + (size.y - textSize * 1.2f) * 0.5f },
-					m_BaseTitleSize, title, { 0.85f, 0.85f, 0.9f, 1.0f });
+					m_BaseTitleSize, title, wisp::tokens::TextPrimary);
 				continue;
 			}
 
@@ -760,12 +763,7 @@ namespace graph {
 			float advance = gi->AdvanceX;
 			if (prevCp)
 				advance += m_FontCache->GetKerning(m_Font, prevCp, cp, size);
-			const float x = penX + gi->BearingX;
-			const float y = at.y + metrics.Ascent + gi->BearingY;
-			const glm::vec2 uvs[4] = {
-				{ gi->AtlasU0, gi->AtlasV0 }, { gi->AtlasU1, gi->AtlasV0 },
-				{ gi->AtlasU1, gi->AtlasV1 }, { gi->AtlasU0, gi->AtlasV1 } };
-			dl.AddText(layer, { x, y }, std::string(1, (char)cp), uvs, gi->AdvanceX, gi->Height, colour, clip);
+			AddGlyph(dl, layer, { penX, at.y + metrics.Ascent }, *gi, colour, clip);
 			penX += std::round(advance);
 			prevCp = cp;
 		}

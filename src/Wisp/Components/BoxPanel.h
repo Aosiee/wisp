@@ -190,7 +190,9 @@ public:
 				else
 					slotSize.y = childDesired.y + pad.y;
 				slotSize.x = geom.LocalSize.x;
-				childPos = { 0, offset + slot.PaddingTop };
+				// The cross-axis padding offsets the child too (it used to be
+				// subtracted from the size but not applied to the position).
+				childPos = { slot.PaddingLeft, offset + slot.PaddingTop };
 			}
 			else
 			{
@@ -199,7 +201,7 @@ public:
 				else
 					slotSize.x = childDesired.x + pad.x;
 				slotSize.y = geom.LocalSize.y;
-				childPos = { offset + slot.PaddingLeft, 0 };
+				childPos = { offset + slot.PaddingLeft, slot.PaddingTop };
 			}
 
 			// Apply slot min/max

@@ -7,6 +7,9 @@
 #include "Wisp/Theme.h"
 #include "Wisp/Docking/DockModel.h"
 #include "Wisp/Docking/DockPaint.h"
+#include "Wisp/Application.h"
+#include "Wisp/Icons.h"
+#include "Wisp/StyleTokens.h"
 #include <algorithm>
 #include <functional>
 #include <memory>
@@ -36,11 +39,15 @@ public:
 	static TabStyle GetDefaultStyle()
 	{
 		TabStyle s;
-		s.Active.Tint = { 0.13f, 0.13f, 0.2f, 1.0f };
-		s.Inactive.Tint = { 0.08f, 0.08f, 0.13f, 1.0f };
-		s.Hovered.Tint = { 0.17f, 0.17f, 0.24f, 1.0f };
-		s.ContentBackground.Tint = { 0.06f, 0.06f, 0.1f, 1.0f };
-		s.CloseButton.Tint = { 0.15f, 0.15f, 0.2f, 1.0f };
+		s.Active.Tint = tokens::Panel;
+		s.Inactive.Tint = tokens::Backdrop;
+		s.Hovered.Tint = tokens::PanelAlt;
+		s.ContentBackground.Tint = tokens::Panel;
+		s.CloseButton.Tint = tokens::Hover;
+		s.LabelTint = tokens::TextSecondary;
+		s.LabelActiveTint = tokens::TextPrimary;
+		s.CloseTint = tokens::TextSecondary;
+		s.TabHeight = tokens::TabHeight;
 		return s;
 	}
 
@@ -65,6 +72,8 @@ public:
 			m_ActiveIndex = m_Tabs.empty() ? 0 : (int)m_Tabs.size() - 1;
 		InvalidateLayout();
 	}
+
+	void SetTabIcons(std::vector<std::string> icons) { m_Icons = std::move(icons); InvalidateLayout(); }
 
 	// Active tab's cached content (owned by the DockSpace panel cache).
 	void SetContent(std::shared_ptr<Widget> content)
@@ -126,8 +135,10 @@ public:
 			{ geom.LocalSize.x, std::max(0.0f, geom.LocalSize.y - m_Style.TabHeight) },
 			m_Style.ContentBackground.Tint, clip);
 
-		// Tab bar background strip
-		drawList.AddBox(layerId + 1, absPos, { geom.LocalSize.x, m_Style.TabHeight }, glm::vec4(0.05f, 0.05f, 0.08f, 1.0f), clip);
+		// Tab bar background strip (the backdrop - the active tab rises out
+		// of it into the panel).
+		drawList.AddBox(layerId + 1, absPos, { geom.LocalSize.x, m_Style.TabHeight }, m_Style.Inactive.Tint, clip);
+		const bool focusWithin = IsFocusWithin();
 
 		// ---- Tab strip (scrollable) ----
 		// Pass 1: natural widths + scroll bookkeeping. Tabs are sized to
@@ -145,8 +156,10 @@ public:
 		float totalW = 2.0f;
 		for (int i = 0; i < (int)m_Tabs.size(); i++)
 		{
-			float labelW = dockpaint::MeasureWidth(m_FontCache, m_Font, m_DisplayNames[i], m_FontSize, 1.0f);
-			widths[i] = std::max(labelW + 40.0f, 60.0f);
+			float labelW = dockpaint::MeasureWidth(m_FontCache, LabelFont(), m_DisplayNames[i], m_FontSize, 1.0f);
+			if (HasIcon(i))
+				labelW += kIconSlot;
+			widths[i] = std::max(labelW + kLabelPadL + kCloseSlot, 72.0f);
 			totalW += widths[i] + 2.0f;
 		}
 		bool fullOverflow = totalW > stripW;
@@ -191,28 +204,55 @@ public:
 			bool hovered = (mouse.x >= x && mouse.x <= x + w && mouse.y >= absPos.y && mouse.y <= absPos.y + m_Style.TabHeight);
 			m_TabRects.push_back({ x, absPos.y, w, m_Style.TabHeight });
 
-			glm::vec4 bg = active ? m_Style.Active.Tint : (hovered ? m_Style.Hovered.Tint : m_Style.Inactive.Tint);
-			drawList.AddBox(layerId + 2, { x, absPos.y }, { w, m_Style.TabHeight }, bg, stripClip);
-			if (active)
-				drawList.AddBox(layerId + 2, { x, absPos.y }, { w, 2.0f }, m_Style.Active.Tint * 1.6f, stripClip);
+			// The active tab merges into the panel (rounded top corners);
+			// the panel holding keyboard focus marks its active tab with the
+			// accent, the others a quiet line.
+			const float tabTop = absPos.y + 3.0f;
+			const float tabH = m_Style.TabHeight - 3.0f;
+			if (active || hovered)
+			{
+				const float radii[4] = { tokens::RadiusMedium, tokens::RadiusMedium, 0.0f, 0.0f };
+				drawList.AddRoundedBox(layerId + 2, { x, tabTop }, { w, tabH + 1.0f },
+					active ? m_Style.Active.Tint : m_Style.Hovered.Tint, radii, 0.0f, glm::vec4(0.0f), stripClip);
+				if (active)
+				{
+					const float lineRadii[4] = { 2.0f, 2.0f, 0.0f, 0.0f };
+					drawList.AddRoundedBox(layerId + 3, { x + 1.0f, tabTop }, { w - 2.0f, 2.0f },
+						focusWithin ? tokens::Accent : tokens::BorderStrong, lineRadii, 0.0f, glm::vec4(0.0f), stripClip);
+				}
+			}
+			else if (i + 1 < (int)m_Tabs.size() && i + 1 != m_ActiveIndex)
+			{
+				drawList.AddBox(layerId + 2, { x + w + 0.5f, tabTop + tabH * 0.28f }, { 1.0f, tabH * 0.44f }, tokens::Separator, stripClip);
+			}
 
 			// Label (full scale - tab widths follow the text, not the
-			// other way round).
-			float inkTop, inkBottom;
-			dockpaint::MeasureInkBox(m_FontCache, m_Font, m_DisplayNames[i], m_FontSize, 1.0f, inkTop, inkBottom);
-			float ly = absPos.y + (m_Style.TabHeight - (inkBottom - inkTop)) * 0.5f - inkTop;
-			dockpaint::PaintText(drawList, m_FontCache, m_Font, m_FontSize, layerId + 3,
-				{ x + 8.0f, ly }, m_DisplayNames[i],
-				active ? m_Style.LabelActiveTint : m_Style.LabelTint, stripClip, 1.0f);
+			// other way round), vertically centred on the line box.
+			const FontMetrics fm = m_FontCache ? m_FontCache->GetMetrics(LabelFont(), m_FontSize) : FontMetrics{};
+			const float baseline = std::round(tabTop + (tabH - fm.LineHeight) * 0.5f + fm.Ascent);
+			float labelX = x + kLabelPadL;
+			if (HasIcon(i))
+			{
+				PaintIcon(drawList, m_Icons[i].c_str(), { labelX - 2.0f, tabTop + (tabH - 18.0f) * 0.5f }, 18.0f,
+					active ? tokens::AccentHover : (hovered ? tokens::TextSecondary : tokens::TextMuted), layerId + 4, stripClip);
+				labelX += kIconSlot;
+			}
+			dockpaint::PaintText(drawList, m_FontCache, LabelFont(), m_FontSize, layerId + 4,
+				{ labelX, baseline }, m_DisplayNames[i],
+				active ? m_Style.LabelActiveTint : (hovered ? tokens::TextPrimary : m_Style.LabelTint), stripClip, 1.0f);
 
-			// Close button (x)
-			float cx = x + w - 16.0f;
-			float cy = absPos.y + (m_Style.TabHeight - 12.0f) * 0.5f;
-			bool closeHovered = (mouse.x >= cx - 2.0f && mouse.x <= cx + 14.0f && mouse.y >= cy - 2.0f && mouse.y <= cy + 14.0f);
-			if (closeHovered)
-				drawList.AddBox(layerId + 3, { cx - 2.0f, cy - 2.0f }, { 14.0f, 14.0f }, m_Style.CloseButton.Tint, stripClip);
-			drawList.AddBox(layerId + 4, { cx + 4.0f, cy + 5.5f }, { 4.0f, 1.0f }, m_Style.CloseTint, stripClip);
-			drawList.AddBox(layerId + 4, { cx + 5.5f, cy + 4.0f }, { 1.0f, 4.0f }, m_Style.CloseTint, stripClip);
+			// Close button: on the active tab and on hover only.
+			const glm::vec4 cr = CloseRect(m_TabRects.back());
+			const bool closeHovered = (mouse.x >= cr.x && mouse.x <= cr.x + cr.z && mouse.y >= cr.y && mouse.y <= cr.y + cr.w);
+			if (active || hovered)
+			{
+				if (closeHovered)
+				{
+					const float rr[4] = { tokens::RadiusSmall, tokens::RadiusSmall, tokens::RadiusSmall, tokens::RadiusSmall };
+					drawList.AddRoundedBox(layerId + 4, { cr.x, cr.y }, { cr.z, cr.w }, m_Style.CloseButton.Tint, rr, 0.0f, glm::vec4(0.0f), stripClip);
+				}
+				PaintIcon(drawList, icons::Close, { cr.x, cr.y }, cr.z, closeHovered ? tokens::TextPrimary : m_Style.CloseTint, layerId + 5, stripClip);
+			}
 
 			x += w + 2.0f;
 		}
@@ -226,16 +266,14 @@ public:
 		{
 			auto paintArrow = [&](const glm::vec4& r, const char* glyph) {
 				bool hovered = (mouse.x >= r.x && mouse.x <= r.x + r.z && mouse.y >= r.y && mouse.y <= r.y + r.w);
-				drawList.AddBox(layerId + 5, { r.x, r.y }, { r.z, r.w },
-					hovered ? m_Style.Hovered.Tint : glm::vec4(0.11f, 0.11f, 0.18f, 1.0f), clip);
-				float inkTop, inkBottom;
-				dockpaint::MeasureInkBox(m_FontCache, m_Font, glyph, m_FontSize, 1.0f, inkTop, inkBottom);
-				float gy = r.y + (r.w - (inkBottom - inkTop)) * 0.5f - inkTop;
-				dockpaint::PaintText(drawList, m_FontCache, m_Font, m_FontSize, layerId + 6,
-					{ r.x + (r.z - 7.0f) * 0.5f, gy }, glyph, glm::vec4(0.75f, 0.75f, 0.8f, 1.0f), clip, 1.0f);
+				const float rr[4] = { tokens::RadiusSmall, tokens::RadiusSmall, tokens::RadiusSmall, tokens::RadiusSmall };
+				drawList.AddRoundedBox(layerId + 5, { r.x, r.y }, { r.z, r.w },
+					hovered ? tokens::Hover : m_Style.Inactive.Tint, rr, 0.0f, glm::vec4(0.0f), clip);
+				PaintIcon(drawList, glyph, { r.x + (r.z - 14.0f) * 0.5f, r.y + (r.w - 14.0f) * 0.5f }, 14.0f,
+					hovered ? tokens::TextPrimary : tokens::TextSecondary, layerId + 6, clip);
 			};
-			paintArrow(m_ScrollArrowL, "<");
-			paintArrow(m_ScrollArrowR, ">");
+			paintArrow(m_ScrollArrowL, icons::ChevronLeft);
+			paintArrow(m_ScrollArrowR, icons::ChevronRight);
 		}
 
 		// Content
@@ -282,10 +320,8 @@ public:
 	bool HitTestClose(const glm::vec2& absPos, int tabIndex) const
 	{
 		if (tabIndex < 0 || tabIndex >= (int)m_TabRects.size()) return false;
-		const auto& r = m_TabRects[tabIndex];
-		float cx = r.x + r.z - 16.0f;
-		float cy = r.y + (r.w - 12.0f) * 0.5f;
-		return absPos.x >= cx - 2.0f && absPos.x <= cx + 14.0f && absPos.y >= cy - 2.0f && absPos.y <= cy + 14.0f;
+		const glm::vec4 cr = CloseRect(m_TabRects[tabIndex]);
+		return absPos.x >= cr.x && absPos.x <= cr.x + cr.z && absPos.y >= cr.y && absPos.y <= cr.y + cr.w;
 	}
 
 	// Scroll-arrow hit test: -1 = left, +1 = right, 0 = neither (the
@@ -325,6 +361,47 @@ public:
 	}
 
 private:
+	static constexpr float kLabelPadL = 10.0f;
+	static constexpr float kIconSlot = 19.0f;
+	bool HasIcon(int i) const { return i >= 0 && i < (int)m_Icons.size() && !m_Icons[i].empty(); }
+	static constexpr float kCloseSlot = 27.0f;
+
+	// The tab labels' face: the registered Medium face, else the dock font.
+	FontHandle LabelFont() const { return UIApplication::FontOr(FontRole::Medium, m_Font); }
+
+	// The close button's hit/paint rect inside a tab rect (abs x,y,w,h).
+	static glm::vec4 CloseRect(const glm::vec4& tab)
+	{
+		const float size = 18.0f;
+		const float top = tab.y + 3.0f;
+		const float h = tab.w - 3.0f;
+		return { tab.x + tab.z - size - 7.0f, top + (h - size) * 0.5f, size, size };
+	}
+
+	// An icon glyph centred in a square of `size` at `pos` (abs).
+	void PaintIcon(DrawList& dl, const char* glyph, const glm::vec2& pos, float size, const glm::vec4& tint, int layer, int clip) const
+	{
+		if (!m_FontCache)
+			return;
+		const float iconPx = size * 0.78f;
+		const FontHandle iconFont = UIApplication::FontOr(FontRole::Icons, m_Font);
+		const float w = dockpaint::MeasureWidth(m_FontCache, iconFont, glyph, iconPx, 1.0f);
+		const FontMetrics fm = m_FontCache->GetMetrics(iconFont, iconPx);
+		const glm::vec2 pen{ std::round(pos.x + (size - w) * 0.5f), std::round(pos.y + (size - fm.LineHeight) * 0.5f + fm.Ascent) };
+		dockpaint::PaintText(dl, m_FontCache, iconFont, iconPx, layer, pen, glyph, tint, clip, 1.0f);
+	}
+
+	// True while the app's keyboard focus sits inside this well's content.
+	bool IsFocusWithin() const
+	{
+		if (!UIApplication::IsValid() || !m_Content)
+			return false;
+		for (const Widget* w = UIApplication::Get().GetFocusWidget(); w; w = w->GetParent())
+			if (w == m_Content.get())
+				return true;
+		return false;
+	}
+
 	void ComputeScrollArrowRects(const glm::vec2& absPos, float barW, bool arrowsShown) const
 	{
 		if (!arrowsShown)
@@ -347,6 +424,7 @@ private:
 
 	std::vector<dock::TabEntry> m_Tabs;
 	std::vector<std::string> m_DisplayNames;
+	std::vector<std::string> m_Icons;
 	int m_ActiveIndex = 0;
 	std::shared_ptr<Widget> m_Content;
 

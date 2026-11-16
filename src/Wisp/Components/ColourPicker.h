@@ -22,6 +22,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include "Wisp/StyleTokens.h"
 
 namespace wisp {
 
@@ -466,7 +467,7 @@ public:
 		glm::vec2 absPos = geom.LocalToAbsolute({ 0, 0 });
 		int clip = args.InheritedClipIndex;
 		if (m_Hovered)
-			drawList.AddBox(layerId, absPos, geom.LocalSize, { 0.2f, 0.35f, 0.6f, 1.0f }, clip);
+			drawList.AddBox(layerId, absPos, geom.LocalSize, wisp::tokens::Accent, clip);
 
 		// Pipette icon: a bulb (circle) + a tip (line) pointing top-right.
 		glm::vec2 bulb{ absPos.x + 8.0f, absPos.y + 12.0f };
@@ -476,9 +477,9 @@ public:
 			float a = (float)i / 12.0f * 6.2831853f;
 			ring.push_back(bulb + glm::vec2{ std::cos(a), std::sin(a) } * 4.0f);
 		}
-		drawList.AddPolyline(layerId + 1, ring, 1.5f, { 0.85f, 0.85f, 0.9f, 1.0f }, clip);
+		drawList.AddPolyline(layerId + 1, ring, 1.5f, wisp::tokens::TextPrimary, clip);
 		drawList.AddLine(layerId + 1, { bulb.x + 3.0f, bulb.y - 3.0f }, { absPos.x + 16.0f, absPos.y + 2.0f },
-			2.0f, { 0.85f, 0.85f, 0.9f, 1.0f }, clip);
+			2.0f, wisp::tokens::TextPrimary, clip);
 		return layerId + 2;
 	}
 
@@ -713,7 +714,7 @@ public:
 		glm::vec2 absPos = geom.LocalToAbsolute({ 0, 0 });
 		int clip = args.InheritedClipIndex;
 		PaintColourSwatch(drawList, layerId, absPos, geom.LocalSize, m_State->Colour,
-			1.0f, { 0.4f, 0.4f, 0.5f, 1.0f }, clip);
+			1.0f, wisp::tokens::TextMuted, clip);
 		return layerId + 2;
 	}
 
@@ -1297,7 +1298,7 @@ private:
 		{
 			float mainH = mainCol->ComputeDesiredSize().y;
 			auto side = std::make_unique<Border>();
-			side->SetBrush({ glm::vec4(0.07f, 0.07f, 0.11f, 1.0f) });
+			side->SetBrush({ wisp::tokens::Field });
 			side->SetPadding(2);
 			auto pal = std::make_unique<ColourPickerPalette>(state, m_State->Palette);
 			auto palSize = std::make_unique<SizeBox>();

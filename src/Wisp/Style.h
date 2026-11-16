@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Wisp/DrawList.h"
+#include "Wisp/StyleTokens.h"
 #include <glm/glm.hpp>
 
 namespace wisp {
@@ -27,7 +28,9 @@ struct ButtonStyle
 	Brush Pressed;
 	Brush Disabled;
 	Margin ContentPadding{ 8, 4, 8, 4 };
-	glm::vec2 PressedContentOffset{ 0, 1 };
+	glm::vec2 PressedContentOffset{ 0, 0 };
+	// Rounded by default; 0 = a flat row.
+	float CornerRadius = tokens::RadiusSmall;
 	bool operator==(const ButtonStyle&) const = default;
 };
 
@@ -40,7 +43,7 @@ struct CheckBoxStyle
 	Brush BoxChecked;
 	Brush BoxHovered;
 	Brush CheckMark;
-	float BoxSize = 16;
+	float BoxSize = 15;
 	Margin LabelPadding{ 6, 0, 0, 0 };
 	bool operator==(const CheckBoxStyle&) const = default;
 };
@@ -56,7 +59,7 @@ struct SliderStyle
 	Brush ThumbHovered;
 	Brush ThumbDragged;
 	float TrackHeight = 4;
-	float ThumbSize = 12;
+	float ThumbSize = 13;
 	bool operator==(const SliderStyle&) const = default;
 };
 
@@ -79,8 +82,13 @@ struct EditableTextStyle
 	Brush Background;
 	Brush HoveredBackground;
 	Brush FocusedBackground;
-	glm::vec4 SelectionTint{ 0.2f, 0.4f, 0.7f, 0.5f };
-	glm::vec4 CaretTint{ 0.9f, 0.9f, 1.0f, 1.0f };
+	glm::vec4 SelectionTint = tokens::WithAlpha(tokens::Accent, 0.38f);
+	glm::vec4 CaretTint = tokens::TextPrimary;
+	glm::vec4 BorderTint = tokens::Border;
+	glm::vec4 BorderHoveredTint = tokens::BorderStrong;
+	glm::vec4 FocusTint = tokens::Accent;
+	glm::vec4 TextTint = tokens::TextPrimary;
+	glm::vec4 PlaceholderTint = tokens::TextMuted;
 	bool operator==(const EditableTextStyle&) const = default;
 };
 

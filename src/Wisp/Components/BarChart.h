@@ -7,6 +7,7 @@
 #include <cmath>
 #include <string>
 #include <vector>
+#include "Wisp/StyleTokens.h"
 
 namespace wisp {
 
@@ -65,13 +66,13 @@ public:
 				auto ms = m_FontCache->MeasureText(m_Font, buf, m_FontSize * 0.6f);
 				float lx = bx + barW*0.5f - ms.x*0.5f;
 				float ly = by - ms.y - 2;
-				PaintText(drawList, layerId+2, {lx, ly}, buf, {0.8f,0.8f,0.85f,1}, clip, m_FontSize * 0.6f);
+				PaintText(drawList, layerId+2, {lx, ly}, buf, wisp::tokens::TextPrimary, clip, m_FontSize * 0.6f);
 
 				// Label below
 				auto lm = m_FontCache->MeasureText(m_Font, m_Bars[i].Label, m_FontSize * 0.55f);
 				float llx = bx + barW*0.5f - lm.x*0.5f;
 				float lly = gy + gh + 4;
-				PaintText(drawList, layerId+2, {llx, lly}, m_Bars[i].Label, {0.5f,0.5f,0.6f,1}, clip, m_FontSize * 0.55f);
+				PaintText(drawList, layerId+2, {llx, lly}, m_Bars[i].Label, wisp::tokens::TextMuted, clip, m_FontSize * 0.55f);
 			}
 		}
 
@@ -96,8 +97,7 @@ private:
 			const GlyphInfo* gi = m_FontCache->GetGlyph(m_Font, cp, pixelSize);
 			if(gi)
 			{
-				glm::vec2 uv[4]={{gi->AtlasU0,gi->AtlasV0},{gi->AtlasU1,gi->AtlasV0},{gi->AtlasU1,gi->AtlasV1},{gi->AtlasU0,gi->AtlasV1}};
-				dl.AddText(layer, {px, py + gi->BearingY}, std::string(1,(char)cp), uv, gi->AdvanceX, gi->Height, tint, clip);
+				wisp::AddGlyph(dl, layer, { px, py }, *gi, tint, clip);
 				px += gi->AdvanceX;
 			}
 		}

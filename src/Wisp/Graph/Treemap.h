@@ -21,6 +21,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include "Wisp/StyleTokens.h"
 
 namespace wisp {
 namespace graph {
@@ -42,11 +43,13 @@ namespace graph {
 				if (text.empty())
 					return nullptr;
 				auto block = std::make_unique<wisp::TextBlock>(m_FontCache, m_Font, 13.0f,
-					text, glm::vec4(0.95f, 0.95f, 1.0f, 1.0f));
+					text, wisp::tokens::TextPrimary);
 				block->SetWrapMode(wisp::WrapMode::Word);
 				block->SetAutoWrap(true);
 				auto border = std::make_unique<wisp::Border>();
-				border->SetBrush({ glm::vec4(0.1f, 0.1f, 0.16f, 0.97f) });
+				border->SetBrush({ wisp::tokens::Popup });
+				border->SetCornerRadii(wisp::tokens::RadiusMedium + 1.0f);
+				border->SetOutline(1.0f, wisp::tokens::BorderStrong);
 				border->SetPadding(8.0f, 6.0f);
 				border->SetChild(std::move(block));
 				auto sized = std::make_unique<wisp::SizeBox>();
@@ -84,7 +87,7 @@ namespace graph {
 			m_Origin = geom.LocalToAbsolute({ 0, 0 });
 			m_Size = geom.LocalSize;
 
-			dl.AddBox(layerId, m_Origin, m_Size, { 0.05f, 0.05f, 0.09f, 1.0f }, args.InheritedClipIndex);
+			dl.AddBox(layerId, m_Origin, m_Size, wisp::tokens::Panel, args.InheritedClipIndex);
 			const int clip = dl.PushClip({ m_Origin.x, m_Origin.y, m_Size.x, m_Size.y }, args.InheritedClipIndex);
 
 			m_Cells.clear();
@@ -188,11 +191,7 @@ namespace graph {
 				float advance = gi->AdvanceX;
 				if (prevCp)
 					advance += m_FontCache->GetKerning(m_Font, prevCp, cp, size);
-				const glm::vec2 uvs[4] = {
-					{ gi->AtlasU0, gi->AtlasV0 }, { gi->AtlasU1, gi->AtlasV0 },
-					{ gi->AtlasU1, gi->AtlasV1 }, { gi->AtlasU0, gi->AtlasV1 } };
-				dl.AddText(layer, { penX + gi->BearingX, at.y + metrics.Ascent + gi->BearingY },
-					std::string(1, (char)cp), uvs, gi->AdvanceX, gi->Height, colour, clip);
+				wisp::AddGlyph(dl, layer, { penX, at.y + metrics.Ascent }, *gi, colour, clip);
 				penX += std::round(advance);
 				prevCp = cp;
 			}

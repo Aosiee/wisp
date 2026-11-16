@@ -8,6 +8,8 @@
 #include "Wisp/Application.h"
 #include "Wisp/Docking/DockModel.h"
 #include "Wisp/Docking/DockPaint.h"
+#include "Wisp/Icons.h"
+#include "Wisp/StyleTokens.h"
 #include <functional>
 #include <memory>
 #include <string>
@@ -26,11 +28,12 @@ public:
 	static DockStyle GetDefaultStyle()
 	{
 		DockStyle s;
-		s.Divider.Tint = { 0.16f, 0.16f, 0.24f, 1.0f };
-		s.FloatingTitleBar.Tint = { 0.14f, 0.14f, 0.22f, 1.0f };
-		s.FloatingTitleBarInactive.Tint = { 0.1f, 0.1f, 0.16f, 1.0f };
-		s.DiamondIdle.Tint = { 0.1f, 0.1f, 0.16f, 1.0f };
-		s.DiamondHovered.Tint = { 0.25f, 0.4f, 0.6f, 1.0f };
+		s.Divider.Tint = tokens::Backdrop;
+		s.FloatingTitleBar.Tint = tokens::Raised;
+		s.FloatingTitleBarInactive.Tint = tokens::Backdrop;
+		s.FloatingTitleTint = tokens::TextPrimary;
+		s.DiamondIdle.Tint = tokens::Popup;
+		s.DiamondHovered.Tint = tokens::Accent;
 		return s;
 	}
 
@@ -91,28 +94,38 @@ public:
 		int clip = args.InheritedClipIndex;
 		float th = m_Style.FloatingTitleHeight;
 
-		// Panel body
-		drawList.AddBox(layerId, absPos, geom.LocalSize, glm::vec4(0.07f, 0.07f, 0.1f, 0.98f), clip);
+		// A rounded card with a soft shadow, a title bar, a real close icon.
+		const float rAll[4] = { tokens::RadiusLarge, tokens::RadiusLarge, tokens::RadiusLarge, tokens::RadiusLarge };
+		const float rTop[4] = { tokens::RadiusLarge, tokens::RadiusLarge, 0.0f, 0.0f };
+		drawList.AddRoundedBox(layerId, absPos + glm::vec2(0.0f, 4.0f), geom.LocalSize + glm::vec2(0.0f, 2.0f), tokens::Shadow, rAll, 0.0f, glm::vec4(0.0f), clip);
+		drawList.AddRoundedBox(layerId, absPos, geom.LocalSize, tokens::Panel, rAll, 1.0f, tokens::BorderStrong, clip);
 		// Title bar
 		glm::vec4 bar = m_Active ? m_Style.FloatingTitleBar.Tint : m_Style.FloatingTitleBarInactive.Tint;
-		drawList.AddBox(layerId + 1, absPos, { geom.LocalSize.x, th }, bar, clip);
+		drawList.AddRoundedBox(layerId + 1, absPos + glm::vec2(1.0f, 1.0f), { geom.LocalSize.x - 2.0f, th - 1.0f }, bar, rTop, 0.0f, glm::vec4(0.0f), clip);
 
-		// Title text
-		float inkTop, inkBottom;
-		dockpaint::MeasureInkBox(m_FontCache, m_Font, m_Title, m_FontSize, 1.0f, inkTop, inkBottom);
-		float ly = absPos.y + (th - (inkBottom - inkTop)) * 0.5f - inkTop;
-		dockpaint::PaintText(drawList, m_FontCache, m_Font, m_FontSize, layerId + 2, { absPos.x + 8.0f, ly },
-			m_Title, m_Style.FloatingTitleTint, clip, 1.0f);
+		// Title text (the Medium face, centred on the bar)
+		const FontHandle titleFont = UIApplication::FontOr(FontRole::Medium, m_Font);
+		const FontMetrics fm = m_FontCache ? m_FontCache->GetMetrics(titleFont, m_FontSize) : FontMetrics{};
+		const float baseline = std::round(absPos.y + (th - fm.LineHeight) * 0.5f + fm.Ascent);
+		dockpaint::PaintText(drawList, m_FontCache, titleFont, m_FontSize, layerId + 2, { absPos.x + 12.0f, baseline },
+			m_Title, m_Active ? m_Style.FloatingTitleTint : tokens::TextSecondary, clip, 1.0f);
 
 		// Close button
 		float cx = absPos.x + geom.LocalSize.x - 16.0f;
 		float cy = absPos.y + (th - 12.0f) * 0.5f;
 		glm::vec2 mouse = UIApplication::IsValid() ? UIApplication::Get().GetMousePos() : glm::vec2(-1, -1);
 		bool closeHover = (mouse.x >= cx - 2.0f && mouse.x <= cx + 14.0f && mouse.y >= cy - 2.0f && mouse.y <= cy + 14.0f);
+		const float rs[4] = { tokens::RadiusSmall, tokens::RadiusSmall, tokens::RadiusSmall, tokens::RadiusSmall };
 		if (closeHover)
-			drawList.AddBox(layerId + 2, { cx - 2.0f, cy - 2.0f }, { 14.0f, 14.0f }, { 0.2f, 0.2f, 0.28f, 1.0f }, clip);
-		drawList.AddBox(layerId + 3, { cx + 4.0f, cy + 5.5f }, { 4.0f, 1.0f }, { 0.7f, 0.7f, 0.75f, 1.0f }, clip);
-		drawList.AddBox(layerId + 3, { cx + 5.5f, cy + 4.0f }, { 1.0f, 4.0f }, { 0.7f, 0.7f, 0.75f, 1.0f }, clip);
+			drawList.AddRoundedBox(layerId + 2, { cx - 4.0f, cy - 4.0f }, { 20.0f, 20.0f }, tokens::Error, rs, 0.0f, glm::vec4(0.0f), clip);
+		if (m_FontCache)
+		{
+			const FontHandle iconFont = UIApplication::FontOr(FontRole::Icons, m_Font);
+			const FontMetrics im = m_FontCache->GetMetrics(iconFont, 13.0f);
+			dockpaint::PaintText(drawList, m_FontCache, iconFont, 13.0f, layerId + 3,
+				{ std::round(cx - 0.5f), std::round(cy + 6.0f - im.LineHeight * 0.5f + im.Ascent) }, icons::Close,
+				closeHover ? tokens::TextOnAccent : tokens::TextSecondary, clip, 1.0f);
+		}
 
 		// Content (hard-clipped to the panel body)
 		int contentLayer = layerId + 4;
@@ -137,7 +150,8 @@ public:
 		float g = 12.0f;
 		float gx = absPos.x + geom.LocalSize.x - g;
 		float gy = absPos.y + geom.LocalSize.y - g;
-		drawList.AddBox(contentLayer + 1, { gx, gy }, { g, g }, glm::vec4(0.2f, 0.2f, 0.28f, 1.0f), clip);
+		for (int k = 0; k < 3; k++)
+			drawList.AddLine(contentLayer + 1, { gx + g - 3.0f - k * 3.5f, gy + g - 2.0f }, { gx + g - 2.0f, gy + g - 3.0f - k * 3.5f }, 1.0f, tokens::TextMuted, clip);
 		return contentLayer + 2;
 	}
 

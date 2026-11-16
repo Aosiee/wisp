@@ -26,9 +26,7 @@ inline void PaintText(DrawList& dl, FontCache* fc, FontHandle font, float pixelS
 		const GlyphInfo* gi = fc->GetGlyph(font, cp, pixelSize);
 		if (gi)
 		{
-			glm::vec2 uv[4] = { {gi->AtlasU0, gi->AtlasV0}, {gi->AtlasU1, gi->AtlasV0}, {gi->AtlasU1, gi->AtlasV1}, {gi->AtlasU0, gi->AtlasV1} };
-			dl.AddText(layer, { px, py + gi->BearingY * scale }, std::string(1, (char)cp), uv,
-				gi->AdvanceX * scale, gi->Height * scale, tint, clip);
+			wisp::AddGlyph(dl, layer, { px, py }, *gi, tint, clip, scale);
 			px += gi->AdvanceX * scale;
 		}
 	}

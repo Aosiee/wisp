@@ -9,6 +9,7 @@
 #include "Wisp/Application.h"
 #include <functional>
 #include <string>
+#include "Wisp/StyleTokens.h"
 
 namespace wisp {
 
@@ -39,11 +40,11 @@ public:
 
 	// Base brush for the modal background constants (they were writable
 	// statics nothing ever wrote).
-	static constexpr Brush BackgroundBrush{ glm::vec4(0.06f, 0.06f, 0.12f, 0.97f) };
+	static constexpr Brush BackgroundBrush{ wisp::tokens::Popup };
 	// Button brushes (shared defaults)
-	static constexpr Brush ButtonNormal{ glm::vec4(0.15f, 0.15f, 0.22f, 1.0f) };
-	static constexpr Brush ButtonHover{ glm::vec4(0.22f, 0.22f, 0.30f, 1.0f) };
-	static constexpr Brush ButtonPressed{ glm::vec4(0.10f, 0.10f, 0.16f, 1.0f) };
+	static constexpr Brush ButtonNormal{ wisp::tokens::Control };
+	static constexpr Brush ButtonHover{ wisp::tokens::Hover };
+	static constexpr Brush ButtonPressed{ wisp::tokens::Pressed };
 
 private:
 	static std::unique_ptr<Widget> BuildContent(FontCache* fc, FontHandle fh, float fontSize,

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Wisp/Core.h"
+#include "Wisp/StyleTokens.h"
 #include "Wisp/DrawList.h"
 #include "Wisp/Style.h"
 #include "Wisp/Theme.h"
@@ -20,11 +21,11 @@ public:
 	static SliderStyle GetDefaultStyle()
 	{
 		SliderStyle s;
-		s.Track.Tint         = { 0.15f, 0.15f, 0.2f, 1.0f };
-		s.Fill.Tint          = { 0.3f, 0.5f, 0.8f, 1.0f };
-		s.Thumb.Tint         = { 0.25f, 0.45f, 0.75f, 1.0f };
-		s.ThumbHovered.Tint  = { 0.35f, 0.55f, 0.85f, 1.0f };
-		s.ThumbDragged.Tint  = { 0.4f, 0.6f, 0.9f, 1.0f };
+		s.Track.Tint         = tokens::Field;
+		s.Fill.Tint          = tokens::Accent;
+		s.Thumb.Tint         = tokens::TextPrimary;
+		s.ThumbHovered.Tint  = tokens::TextOnAccent;
+		s.ThumbDragged.Tint  = tokens::TextOnAccent;
 		return s;
 	}
 
@@ -54,18 +55,22 @@ public:
 		float trackH = m_Style.TrackHeight;
 		float thumbR = m_Style.ThumbSize * 0.5f;
 
-		drawList.AddBox(layerId, { absPos.x, midY - trackH * 0.5f }, { w, trackH },
-			m_Style.Track.Tint, args.InheritedClipIndex);
+		const float tr = trackH * 0.5f;
+		const float trr[4] = { tr, tr, tr, tr };
+		drawList.AddRoundedBox(layerId, { absPos.x, midY - trackH * 0.5f }, { w, trackH },
+			m_Style.Track.Tint, trr, 1.0f, tokens::Border, args.InheritedClipIndex);
 
 		float fillW = w * m_Value;
 		if (fillW > 0)
-			drawList.AddBox(layerId + 1, { absPos.x, midY - trackH * 0.5f }, { fillW, trackH },
-				m_Style.Fill.Tint, args.InheritedClipIndex);
+			drawList.AddRoundedBox(layerId + 1, { absPos.x, midY - trackH * 0.5f }, { std::max(fillW, trackH), trackH },
+				m_Style.Fill.Tint, trr, 0.0f, glm::vec4(0.0f), args.InheritedClipIndex);
 
 		float thumbX = absPos.x + (w - thumbR * 2) * m_Value;
 		glm::vec4 thumbCol = m_Dragging ? m_Style.ThumbDragged.Tint
 			: (m_IsHovered ? m_Style.ThumbHovered.Tint : m_Style.Thumb.Tint);
-		drawList.AddBox(layerId + 2, { thumbX, midY - thumbR }, { thumbR * 2, thumbR * 2 }, thumbCol, args.InheritedClipIndex);
+		const float thr[4] = { thumbR, thumbR, thumbR, thumbR };
+		drawList.AddRoundedBox(layerId + 2, { thumbX, midY - thumbR }, { thumbR * 2, thumbR * 2 }, thumbCol, thr, 1.0f,
+			m_Dragging || m_IsHovered ? tokens::Accent : tokens::BorderStrong, args.InheritedClipIndex);
 
 		return layerId + 3;
 	}

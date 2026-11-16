@@ -87,6 +87,34 @@ FontCache::FontFace* FontCache::GetFace(FontHandle handle)
 	return &m_Faces[handle];
 }
 
+void FontCache::SetFallbacks(FontHandle font, std::vector<FontHandle> fallbacks)
+{
+	if (FontFace* face = GetFace(font))
+	{
+		face->Fallbacks = std::move(fallbacks);
+		m_LayoutGeneration++;
+	}
+}
+
+static bool FaceHasGlyph(const std::vector<uint8_t>& ttf, int fontOffset, uint32_t codepoint)
+{
+	stbtt_fontinfo info;
+	if (!stbtt_InitFont(&info, ttf.data(), stbtt_GetFontOffsetForIndex(ttf.data(), fontOffset)))
+		return false;
+	return stbtt_FindGlyphIndex(&info, (int)codepoint) != 0;
+}
+
+FontHandle FontCache::ResolveFace(FontHandle font, uint32_t codepoint)
+{
+	FontFace* face = GetFace(font);
+	if (!face || face->Fallbacks.empty() || FaceHasGlyph(face->TtfData, face->StbFontOffset, codepoint))
+		return font;
+	for (FontHandle fb : face->Fallbacks)
+		if (FontFace* f = GetFace(fb); f && FaceHasGlyph(f->TtfData, f->StbFontOffset, codepoint))
+			return fb;
+	return font;
+}
+
 const GlyphInfo* FontCache::GetGlyph(FontHandle font, uint32_t codepoint, float pixelSize)
 {
 	FontFace* face = GetFace(font);
@@ -120,7 +148,7 @@ const GlyphInfo* FontCache::GetGlyph(FontHandle font, uint32_t codepoint, float 
 
 bool FontCache::RasterizeGlyph(FontHandle font, uint32_t codepoint, float pixelSize, GlyphInfo& outInfo)
 {
-	FontFace* face = GetFace(font);
+	FontFace* face = GetFace(ResolveFace(font, codepoint));
 	if (!face) return false;
 
 	stbtt_fontinfo stbInfo;
@@ -146,7 +174,10 @@ bool FontCache::RasterizeGlyph(FontHandle font, uint32_t codepoint, float pixelS
 	// them); the layout metrics below divide back to the LOGICAL units.
 	outInfo.Codepoint = codepoint;
 	outInfo.AdvanceX = advanceWidth * scale / uiScale;
-	outInfo.BearingX = (float)leftSideBearing * scale / uiScale;
+	// The bitmap's own left edge (stb's box x0), not lsb * scale: the quad
+	// is the bitmap, so its offset must be the bitmap's.
+	outInfo.BearingX = (float)x0 / uiScale;
+	(void)leftSideBearing;
 	outInfo.BearingY = (float)y0 / uiScale;
 	outInfo.Width  = (float)bw / uiScale;
 	outInfo.Height = (float)bh / uiScale;
@@ -285,6 +316,41 @@ glm::vec2 FontCache::MeasureText(FontHandle font, const std::string& text, float
 	stbtt_GetFontVMetrics(&stbInfo, &ascent, &descent, &lineGap);
 	float lineHeight = (ascent - descent + lineGap) * scale;
 
+	// The fallback faces (their own scale - each face maps the pixel size
+	// to its own ascent - descent, exactly as RasterizeGlyph does).
+	struct FallbackFace { stbtt_fontinfo Info; float Scale; };
+	std::vector<FallbackFace> fallbacks;
+	for (FontHandle fb : face->Fallbacks)
+	{
+		FontFace* f = GetFace(fb);
+		FallbackFace ff{};
+		if (f && stbtt_InitFont(&ff.Info, f->TtfData.data(), stbtt_GetFontOffsetForIndex(f->TtfData.data(), f->StbFontOffset)))
+		{
+			ff.Scale = stbtt_ScaleForPixelHeight(&ff.Info, pixelSize);
+			fallbacks.push_back(ff);
+		}
+	}
+	// The advance of `cp` in the face that draws it; sets `inPrimary`.
+	auto advanceOf = [&](uint32_t cp, bool& inPrimary) -> float {
+		inPrimary = true;
+		if (!fallbacks.empty() && stbtt_FindGlyphIndex(&stbInfo, (int)cp) == 0)
+		{
+			for (FallbackFace& ff : fallbacks)
+			{
+				if (stbtt_FindGlyphIndex(&ff.Info, (int)cp) != 0)
+				{
+					int a, l;
+					stbtt_GetCodepointHMetrics(&ff.Info, cp, &a, &l);
+					inPrimary = false;
+					return a * ff.Scale;
+				}
+			}
+		}
+		int a, l;
+		stbtt_GetCodepointHMetrics(&stbInfo, cp, &a, &l);
+		return a * scale;
+	};
+
 	float lineWidth = 0.0f, maxLineWidth = 0.0f;
 	int numLines = 1;
 
@@ -309,12 +375,11 @@ glm::vec2 FontCache::MeasureText(FontHandle font, const std::string& text, float
 			continue;
 		}
 
-		int advanceWidth, lsb;
-		stbtt_GetCodepointHMetrics(&stbInfo, cp, &advanceWidth, &lsb);
-		float charWidth = advanceWidth * scale;
+		bool cpInPrimary = true;
+		float charWidth = advanceOf(cp, cpInPrimary);
 
 		// Kerning
-		if (prevCodepoint)
+		if (prevCodepoint && cpInPrimary)
 			charWidth += stbtt_GetCodepointKernAdvance(&stbInfo, prevCodepoint, cp) * scale;
 
 		if (cp == ' ' && wrapMode == WrapMode::Word && wrapWidth > 0.0f)
@@ -331,18 +396,19 @@ glm::vec2 FontCache::MeasureText(FontHandle font, const std::string& text, float
 				else if ((*look & 0xF0) == 0xE0 && look+2<end) { lcp = ((*look & 0x0F)<<12)|((look[1]&0x3F)<<6)|(look[2]&0x3F); look+=3; }
 				else break;
 				if (lcp == ' ' || lcp == '\n') break;
-				int a, l;
-				stbtt_GetCodepointHMetrics(&stbInfo, lcp, &a, &l);
-				float cw = a * scale;
-				if (lookPrev != ' ')
+				bool lInPrimary = true;
+				float cw = advanceOf(lcp, lInPrimary);
+				if (lInPrimary)
 					cw += stbtt_GetCodepointKernAdvance(&stbInfo, lookPrev, lcp) * scale;
-				wordW += std::round(cw);
+				wordW += cw;
 				lookPrev = lcp;
 			}
-			float spaceW = charWidth;
-			if (prevCodepoint)
-				spaceW += stbtt_GetCodepointKernAdvance(&stbInfo, prevCodepoint, cp) * scale;
-			if (lineWidth + spaceW + wordW > wrapWidth && lineWidth > 0.0f)
+			// The same unrounded arithmetic as the unwrapped measure
+			// (charWidth already carries the space's kerning) plus a
+			// half-pixel slack - measured against its own unwrapped width, a
+			// text must not wrap, or every auto-wrapping label in a
+			// content-sized slot collapsed to one word per line.
+			if (lineWidth + charWidth + wordW > wrapWidth + 0.5f && lineWidth > 0.0f)
 			{
 				maxLineWidth = std::max(maxLineWidth, lineWidth);
 				lineWidth = 0.0f;
@@ -352,7 +418,7 @@ glm::vec2 FontCache::MeasureText(FontHandle font, const std::string& text, float
 			}
 		}
 
-		if (wrapWidth > 0.0f && lineWidth + charWidth > wrapWidth && lineWidth > 0.0f)
+		if (wrapWidth > 0.0f && lineWidth + charWidth > wrapWidth + 0.5f && lineWidth > 0.0f)
 		{
 			maxLineWidth = std::max(maxLineWidth, lineWidth);
 			lineWidth = charWidth;

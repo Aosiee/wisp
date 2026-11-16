@@ -9,6 +9,7 @@
 #include "Wisp/Docking/DockModel.h"
 #include "Wisp/Docking/DockState.h"
 #include "Wisp/Docking/TabWell.h"
+#include "Wisp/StyleTokens.h"
 #include "Wisp/Docking/FloatingPanel.h"
 #include "Wisp/Components/Splitter.h"
 #include "Wisp/Components/Border.h"
@@ -64,12 +65,17 @@ public:
 
 	static DockStyle GetDefaultStyle()
 	{
+		// Thin backdrop gutters (the panels read as cards on the
+		// backdrop), accent drop feedback.
 		DockStyle s;
-		s.Divider.Tint = { 0.16f, 0.16f, 0.24f, 1.0f };
-		s.FloatingTitleBar.Tint = { 0.14f, 0.14f, 0.22f, 1.0f };
-		s.FloatingTitleBarInactive.Tint = { 0.1f, 0.1f, 0.16f, 1.0f };
-		s.DiamondIdle.Tint = { 0.1f, 0.1f, 0.16f, 1.0f };
-		s.DiamondHovered.Tint = { 0.25f, 0.4f, 0.6f, 1.0f };
+		s.Divider.Tint = tokens::Backdrop;
+		s.DividerThickness = 3.0f;
+		s.FloatingTitleBar.Tint = tokens::Raised;
+		s.FloatingTitleBarInactive.Tint = tokens::Backdrop;
+		s.FloatingTitleTint = tokens::TextPrimary;
+		s.DropPreviewTint = tokens::WithAlpha(tokens::Accent, 0.16f);
+		s.DiamondIdle.Tint = tokens::Popup;
+		s.DiamondHovered.Tint = tokens::Accent;
 		return s;
 	}
 
@@ -173,9 +179,9 @@ public:
 		auto list = std::make_unique<VerticalBox>(BoxOrientation::Vertical);
 		auto addItem = [&](const std::string& label, std::function<void()> fn) {
 			auto row = std::make_unique<Button>();
-			row->SetNormalBrush({ glm::vec4(0.1f, 0.1f, 0.16f, 1) });
-			row->SetHoveredBrush({ glm::vec4(0.25f, 0.5f, 0.8f, 0.8f) });
-			row->SetPressedBrush({ glm::vec4(0.15f, 0.3f, 0.5f, 1) });
+			row->SetNormalBrush({ tokens::WithAlpha(tokens::Popup, 0.0f) });
+			row->SetHoveredBrush({ tokens::Accent });
+			row->SetPressedBrush({ tokens::AccentPressed });
 			// Deferred dismissal: the action may destroy this very Button's
 			// tree (DismissPopups frees it), and the Button's own code runs
 			// after the callback returns - so the click handler only
@@ -184,7 +190,7 @@ public:
 				if (fn) fn();
 				UIApplication::Get().RequestDismissPopups();
 			});
-			row->SetChild(std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize, label, glm::vec4(0.9f, 0.9f, 0.95f, 1)));
+			row->SetChild(std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize, label, tokens::TextPrimary));
 			list->AddChild(std::move(row));
 		};
 
@@ -223,8 +229,10 @@ public:
 		}
 
 		auto border = std::make_unique<Border>();
-		border->SetBrush({ glm::vec4(0.1f, 0.1f, 0.16f, 0.97f) });
-		border->SetPadding(2);
+		border->SetBrush({ tokens::Popup });
+		border->SetCornerRadii(tokens::RadiusMedium);
+		border->SetOutline(1.0f, tokens::BorderStrong);
+		border->SetPadding(4);
 		border->SetChild(std::move(list));
 
 		float menuW = 120.0f;
@@ -459,6 +467,10 @@ public:
 			for (const auto& t : node.Tabs)
 				names.push_back(m_State->DisplayNameOf(t.Id));
 			tw->SetTabs(node.Tabs, names, node.ActiveIndex);
+			std::vector<std::string> icons;
+			for (const auto& t : node.Tabs)
+				icons.push_back(m_State->IconOf(t.Id));
+			tw->SetTabIcons(std::move(icons));
 			if (node.ActiveIndex >= 0 && node.ActiveIndex < (int)node.Tabs.size())
 				tw->SetContent(m_State->GetContent(node.Tabs[node.ActiveIndex].Id));
 			return tw;
@@ -547,13 +559,14 @@ public:
 			glm::vec2 pos = cursor + glm::vec2(10.0f, 12.0f);
 			std::string name = self->m_State->DisplayNameOf(panel);
 			glm::vec2 size = { std::max(96.0f, dockpaint::MeasureWidth(self->m_FontCache, self->m_Font, name, self->m_FontSize, 1.0f) + 16.0f), 30.0f };
-			dl.AddBox(layer, pos, size, { 0.16f, 0.22f, 0.34f, 0.9f }, -1);
-			dl.AddBox(layer, pos, { 2.0f, size.y }, { 0.9f, 0.6f, 0.2f, 1.0f }, -1);
+			const float gr[4] = { tokens::RadiusMedium, tokens::RadiusMedium, tokens::RadiusMedium, tokens::RadiusMedium };
+			dl.AddRoundedBox(layer, pos + glm::vec2(0.0f, 2.0f), size, tokens::Shadow, gr, 0.0f, glm::vec4(0.0f), -1);
+			dl.AddRoundedBox(layer, pos, size, tokens::Popup, gr, 1.0f, tokens::Accent, -1);
 			float top, bottom;
 			dockpaint::MeasureInkBox(self->m_FontCache, self->m_Font, name, self->m_FontSize, 1.0f, top, bottom);
 			dockpaint::PaintText(dl, self->m_FontCache, self->m_Font, self->m_FontSize, layer + 1,
 				{ pos.x + 8.0f, pos.y + (size.y - (bottom - top)) * 0.5f - top }, name,
-				{ 0.9f, 0.9f, 1.0f, 1.0f }, -1, 1.0f);
+				tokens::TextPrimary, -1, 1.0f);
 		};
 		pl.OnCancelled = [self, snap = std::make_shared<dock::DockLayout>(dock::CloneLayout(self->m_State->GetModel()))]() {
 			self->m_State->RestoreSnapshot(*snap);
@@ -587,13 +600,14 @@ public:
 			glm::vec2 pos = cursor + glm::vec2(10.0f, 12.0f);
 			std::string name = self->m_State->DisplayNameOf(panel);
 			glm::vec2 size = { std::max(96.0f, dockpaint::MeasureWidth(self->m_FontCache, self->m_Font, name, self->m_FontSize, 1.0f) + 16.0f), 30.0f };
-			dl.AddBox(layer, pos, size, { 0.16f, 0.22f, 0.34f, 0.9f }, -1);
-			dl.AddBox(layer, pos, { 2.0f, size.y }, { 0.3f, 0.55f, 0.9f, 1.0f }, -1);
+			const float gr[4] = { tokens::RadiusMedium, tokens::RadiusMedium, tokens::RadiusMedium, tokens::RadiusMedium };
+			dl.AddRoundedBox(layer, pos + glm::vec2(0.0f, 2.0f), size, tokens::Shadow, gr, 0.0f, glm::vec4(0.0f), -1);
+			dl.AddRoundedBox(layer, pos, size, tokens::Popup, gr, 1.0f, tokens::Accent, -1);
 			float top, bottom;
 			dockpaint::MeasureInkBox(self->m_FontCache, self->m_Font, name, self->m_FontSize, 1.0f, top, bottom);
 			dockpaint::PaintText(dl, self->m_FontCache, self->m_Font, self->m_FontSize, layer + 1,
 				{ pos.x + 8.0f, pos.y + (size.y - (bottom - top)) * 0.5f - top }, name,
-				{ 0.9f, 0.9f, 1.0f, 1.0f }, -1, 1.0f);
+				tokens::TextPrimary, -1, 1.0f);
 		};
 		pl.OnCancelled = [self, snap = std::make_shared<dock::DockLayout>(dock::CloneLayout(self->m_State->GetModel()))]() {
 			self->m_State->RestoreSnapshot(*snap);
@@ -858,19 +872,18 @@ public:
 
 		glm::vec4 r = m_ActivePreviewRect;
 		glm::vec4 tint = m_Style.DropPreviewTint;
-		drawList.AddBox(90100, { r.x, r.y }, { r.z, r.w }, tint, -1);
-		drawList.AddBox(90101, { r.x, r.y }, { r.z, 1.0f }, { 0.3f, 0.6f, 1.0f, 0.7f }, -1);
-		drawList.AddBox(90101, { r.x, r.y + r.w - 1.0f }, { r.z, 1.0f }, { 0.3f, 0.6f, 1.0f, 0.7f }, -1);
-		drawList.AddBox(90101, { r.x, r.y }, { 1.0f, r.w }, { 0.3f, 0.6f, 1.0f, 0.7f }, -1);
-		drawList.AddBox(90101, { r.x + r.z - 1.0f, r.y }, { 1.0f, r.w }, { 0.3f, 0.6f, 1.0f, 0.7f }, -1);
+		const float pr[4] = { tokens::RadiusMedium, tokens::RadiusMedium, tokens::RadiusMedium, tokens::RadiusMedium };
+		drawList.AddRoundedBox(90100, { r.x + 2.0f, r.y + 2.0f }, { r.z - 4.0f, r.w - 4.0f }, tint, pr, 2.0f,
+			tokens::WithAlpha(tokens::Accent, 0.85f), -1);
 
 		if (m_ActiveDropTarget.KindId == dock::DropTarget::Kind::WellZone)
 		{
 			glm::vec2 c = { r.x + r.z * 0.5f, r.y + r.w * 0.5f };
 			const float sz = 8.0f, gap = 10.0f;
 			auto cell = [&](float cx, float cy, bool hot) {
-				drawList.AddBox(90102, { cx - sz * 0.5f, cy - sz * 0.5f }, { sz, sz },
-					hot ? m_Style.DiamondHovered.Tint : m_Style.DiamondIdle.Tint, -1);
+				const float cr[4] = { 2.0f, 2.0f, 2.0f, 2.0f };
+				drawList.AddRoundedBox(90102, { cx - sz * 0.5f, cy - sz * 0.5f }, { sz, sz },
+					hot ? m_Style.DiamondHovered.Tint : m_Style.DiamondIdle.Tint, cr, 1.0f, tokens::BorderStrong, -1);
 			};
 			dock::Zone z = m_ActiveDropTarget.ZoneId;
 			cell(c.x, c.y, z == dock::Zone::Center);

@@ -3,6 +3,7 @@
 #include "Wisp/DrawList.h"
 #include "Wisp/Theme.h"
 #include "Wisp/Style.h"
+#include "Wisp/StyleTokens.h"
 
 namespace wisp {
 	template <typename T> class WidgetRef; // the SetChild(WidgetRef&) overload
@@ -22,7 +23,7 @@ public:
 	static PanelStyle GetDefaultStyle()
 	{
 		PanelStyle s;
-		s.Background.Tint = { 0.1f, 0.1f, 0.15f, 1.0f };
+		s.Background.Tint = tokens::Panel;
 		return s;
 	}
 
@@ -31,6 +32,9 @@ public:
 	Border& SetPadding(float h, float v) { m_Padding.SetPadding(h, v); return *this; }
 	Border& SetCornerRadii(float r) { for (int i = 0; i < 4; i++) m_CornerRadii[i] = r; return *this; }
 	Border& SetCornerRadii(float tl, float tr, float br, float bl) { m_CornerRadii[0]=tl; m_CornerRadii[1]=tr; m_CornerRadii[2]=br; m_CornerRadii[3]=bl; return *this; }
+	// A 1 px-class outline (cards, popups, fields); drawn through the
+	// SDF rounded box, radius 0 included.
+	Border& SetOutline(float width, const glm::vec4& colour) { m_OutlineWidth = width; m_OutlineColour = colour; return *this; }
 	Border& SetChild(std::unique_ptr<Widget> child)
 	{
 		m_Child = std::move(child);
@@ -67,9 +71,12 @@ public:
 		}
 		glm::vec2 absPos = geom.LocalToAbsolute({ 0, 0 });
 		bool hasRadius = (m_CornerRadii[0] > 0 || m_CornerRadii[1] > 0 || m_CornerRadii[2] > 0 || m_CornerRadii[3] > 0);
-		glm::vec4 tint = m_Background.HasTexture ? m_Background.Tint : ResolveThemeColour(this, "Panel.Background", m_Background.Tint);
-		if (hasRadius)
-			drawList.AddRoundedBox(layerId, absPos, geom.LocalSize, tint, m_CornerRadii, 0.0f, glm::vec4(0), args.InheritedClipIndex);
+		// An explicit SetBrush wins; only a default-styled Border takes the
+		// theme's Panel.Background (it used to override every brush).
+		glm::vec4 tint = (m_Background.HasTexture || m_HasUserStyle) ? m_Background.Tint
+			: ResolveThemeColour(this, "Panel.Background", m_Background.Tint);
+		if (hasRadius || m_OutlineWidth > 0.0f)
+			drawList.AddRoundedBox(layerId, absPos, geom.LocalSize, tint, m_CornerRadii, m_OutlineWidth, m_OutlineColour, args.InheritedClipIndex);
 		else if (m_Background.HasTexture)
 			drawList.AddImage(layerId, absPos, geom.LocalSize, m_Background, args.InheritedClipIndex);
 		else
@@ -99,6 +106,8 @@ private:
 	mutable Brush m_Background;
 	Slot  m_Padding;
 	float m_CornerRadii[4] = {};
+	float m_OutlineWidth = 0.0f;
+	glm::vec4 m_OutlineColour{ 0.0f };
 	std::unique_ptr<Widget> m_Child;
 };
 

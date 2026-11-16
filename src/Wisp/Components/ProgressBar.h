@@ -1,6 +1,8 @@
 #pragma once
 
 #include "Wisp/Core.h"
+#include "Wisp/StyleTokens.h"
+#include <algorithm>
 #include "Wisp/DrawList.h"
 #include "Wisp/Application.h"
 #include "Wisp/Style.h"
@@ -20,9 +22,9 @@ public:
 	static ProgressBarStyle GetDefaultStyle()
 	{
 		ProgressBarStyle s;
-		s.Track.Tint   = { 0.08f, 0.08f, 0.12f, 1.0f };
-		s.Fill.Tint    = { 0.3f, 0.6f, 1.0f, 1.0f };
-		s.Marquee.Tint = { 0.3f, 0.6f, 1.0f, 1.0f };
+		s.Track.Tint   = tokens::Field;
+		s.Fill.Tint    = tokens::Accent;
+		s.Marquee.Tint = tokens::Accent;
 		return s;
 	}
 
@@ -55,7 +57,9 @@ public:
 		float w = geom.LocalSize.x, h = geom.LocalSize.y;
 		int clipIdx = args.InheritedClipIndex;
 
-		drawList.AddBox(layerId, absPos, {w, h}, m_Style.Track.Tint, clipIdx);
+		const float pr = std::min(h * 0.5f, tokens::RadiusSmall);
+		const float prr[4] = { pr, pr, pr, pr };
+		drawList.AddRoundedBox(layerId, absPos, {w, h}, m_Style.Track.Tint, prr, 0.0f, glm::vec4(0.0f), clipIdx);
 
 		if (m_Indeterminate)
 		{
@@ -66,7 +70,7 @@ public:
 		}
 		else if (m_Value > 0.0f)
 		{
-			drawList.AddBox(layerId + 1, absPos, {w * m_Value, h}, m_Style.Fill.Tint, clipIdx);
+			drawList.AddRoundedBox(layerId + 1, absPos, {std::max(w * m_Value, h), h}, m_Style.Fill.Tint, prr, 0.0f, glm::vec4(0.0f), clipIdx);
 		}
 		return layerId + 2;
 	}

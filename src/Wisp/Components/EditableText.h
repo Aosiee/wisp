@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Wisp/Core.h"
+#include "Wisp/StyleTokens.h"
 #include "Wisp/DrawList.h"
 #include "Wisp/FontCache.h"
 #include "Wisp/Application.h"
@@ -31,9 +32,9 @@ public:
 	static EditableTextStyle GetDefaultStyle()
 	{
 		EditableTextStyle s;
-		s.Background.Tint         = { 0.08f, 0.08f, 0.12f, 1.0f };
-		s.HoveredBackground.Tint  = { 0.1f, 0.1f, 0.15f, 1.0f };
-		s.FocusedBackground.Tint  = { 0.12f, 0.12f, 0.18f, 1.0f };
+		s.Background.Tint         = tokens::Field;
+		s.HoveredBackground.Tint  = tokens::FieldHover;
+		s.FocusedBackground.Tint  = tokens::Field;
 		return s;
 	}
 
@@ -77,14 +78,20 @@ public:
 
 		glm::vec4 bgCol = HasFocus() ? m_Style.FocusedBackground.Tint
 			: (m_IsHovered ? m_Style.HoveredBackground.Tint : m_Style.Background.Tint);
-		drawList.AddBox(layerId, absPos, { w, h }, bgCol, clipIdx);
-		drawList.AddBox(layerId + 1, absPos, { w, 1 }, glm::vec4(0.2f, 0.2f, 0.3f, 1.0f), clipIdx);
-		drawList.AddBox(layerId + 1, { absPos.x, absPos.y + h - 1 }, { w, 1 }, glm::vec4(0.2f, 0.2f, 0.3f, 1.0f), clipIdx);
+		// A rounded field with a 1 px border that becomes the accent focus
+		// ring.
+		if (!m_Frameless)
+		{
+			const float r = tokens::RadiusSmall;
+			const float rr[4] = { r, r, r, r };
+			const glm::vec4 border = HasFocus() ? m_Style.FocusTint : (m_IsHovered ? m_Style.BorderHoveredTint : m_Style.BorderTint);
+			drawList.AddRoundedBox(layerId, absPos, { w, h }, bgCol, rr, 1.0f, border, clipIdx);
+		}
 
 		if (!m_FontCache || (m_Text.empty() && m_Placeholder.empty())) return layerId + 4;
 
 		FontMetrics metrics = m_FontCache->GetMetrics(m_Font, m_FontSize);
-		float startX = std::floor(absPos.x + 4.0f);
+		float startX = std::floor(absPos.x + 6.0f);
 		float penX = startX, penY = absPos.y + 4.0f;
 		int   lineBreaks = 0; // count during paint for invalidation
 		float effWrap = m_AutoWrap ? geom.LocalSize.x - 8.0f : -1.0f;
@@ -154,13 +161,10 @@ public:
 
 			bool selected = (glyphIdx >= selStart && glyphIdx < selEnd);
 			if (selected && HasFocus())
-				drawList.AddBox(layerId + 2, { penX, penY }, { advance, metrics.LineHeight }, glm::vec4(0.2f,0.4f,0.7f,0.6f), clipIdx);
+				drawList.AddBox(layerId + 2, { penX, penY }, { advance, metrics.LineHeight }, m_Style.SelectionTint, clipIdx);
 
-			float gx = penX + gi->BearingX;
-			float gy = penY + metrics.Ascent + gi->BearingY;
-			glm::vec2 uvs[4] = {{gi->AtlasU0,gi->AtlasV0},{gi->AtlasU1,gi->AtlasV0},{gi->AtlasU1,gi->AtlasV1},{gi->AtlasU0,gi->AtlasV1}};
-			drawList.AddText(layerId + 3, {gx,gy}, std::string(1,(char)cp), uvs, gi->AdvanceX, gi->Height,
-				showingPlaceholder ? glm::vec4(0.45f,0.48f,0.55f,1.0f) : glm::vec4(1,1,1,1), clipIdx);
+			AddGlyph(drawList, layerId + 3, { penX, std::round(penY + metrics.Ascent) }, *gi,
+				showingPlaceholder ? m_Style.PlaceholderTint : m_Style.TextTint, clipIdx);
 			penX += std::round(advance);
 			if (recordGlyphs) m_GlyphPositions.push_back({ penX - advance * 0.5f - m_CachedAbsX, penY - m_CachedAbsY, (float)glyphIdx });
 			prevCp = cp; glyphIdx++;
@@ -168,7 +172,7 @@ public:
 		if (m_CaretPos >= glyphIdx) { caretX = penX; caretY = penY; }
 
 		if (HasFocus() && m_BlinkVisible)
-			drawList.AddBox(layerId + 4, { caretX, caretY + 2 }, { 2.0f, metrics.LineHeight }, glm::vec4(1,1,1,1), clipIdx);
+			drawList.AddBox(layerId + 4, { caretX, caretY + 2 }, { 1.0f, metrics.LineHeight }, m_Style.CaretTint, clipIdx);
 
 		// Invalidate immediately if any line break occurred that wasn't measured
 		if (m_AutoWrap && m_WrapMode != WrapMode::None && lineBreaks > 0)
@@ -440,6 +444,9 @@ public:
 	void OnFocusReceived() override { m_HasFocus = true; ResetBlink(); }
 	void OnFocusLost() override { m_HasFocus = false; m_Anchor = m_CaretPos; m_IsEditing = false; }
 	bool HasFocus() const { return m_HasFocus; }
+	// A field hosted inside another field's frame (the value box) paints
+	// no background or border of its own.
+	void SetFrameless(bool frameless) { m_Frameless = frameless; }
 
 	NavigationReply OnNavigation(const FocusEvent&) override
 	{
@@ -494,6 +501,7 @@ private:
 	bool       m_IsEditing = false;
 	mutable bool m_IsHovered = false;
 	bool         m_HasFocus = false;
+	bool         m_Frameless = false;
 	bool         m_ReadOnly = false;
 	mutable bool m_BlinkVisible = true;
 	WrapMode     m_WrapMode = WrapMode::None;

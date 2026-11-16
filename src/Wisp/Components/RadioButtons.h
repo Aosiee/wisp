@@ -6,6 +6,7 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include "Wisp/StyleTokens.h"
 
 namespace wisp {
 
@@ -62,9 +63,9 @@ public:
 		for (size_t i = 0; i < m_Options.size(); i++)
 		{
 			float cy = pos.y + i * rowH + rowH * 0.5f;
-			glm::vec4 ring = (int)i == m_SelectedIdx ? glm::vec4(0.3f,0.6f,0.9f,1) : glm::vec4(0.4f,0.4f,0.5f,1);
+			glm::vec4 ring = (int)i == m_SelectedIdx ? glm::vec4(0.3f,0.6f,0.9f,1) : wisp::tokens::TextMuted;
 			drawList.AddBox(layerId, {pos.x + 2, cy - circleR}, {circleR*2, circleR*2}, ring, clip);
-			drawList.AddBox(layerId+1, {pos.x + 4, cy - circleR + 2}, {(circleR-2)*2, (circleR-2)*2}, {0.05f,0.05f,0.09f,1}, clip);
+			drawList.AddBox(layerId+1, {pos.x + 4, cy - circleR + 2}, {(circleR-2)*2, (circleR-2)*2}, wisp::tokens::Panel, clip);
 			if ((int)i == m_SelectedIdx)
 				drawList.AddBox(layerId+2, {pos.x + 5, cy - circleR + 3}, {(circleR-3)*2, (circleR-3)*2}, {0.8f,0.9f,1.0f,1}, clip);
 
@@ -138,8 +139,7 @@ private:
 			const GlyphInfo* gi = m_FontCache->GetGlyph(m_Font, cp, m_FontSize);
 			if(gi)
 			{
-				glm::vec2 uv[4]={{gi->AtlasU0,gi->AtlasV0},{gi->AtlasU1,gi->AtlasV0},{gi->AtlasU1,gi->AtlasV1},{gi->AtlasU0,gi->AtlasV1}};
-				dl.AddText(layer, {px, py + gi->BearingY}, std::string(1,(char)cp), uv, gi->AdvanceX, gi->Height, tint, clip);
+				wisp::AddGlyph(dl, layer, { px, py }, *gi, tint, clip);
 				px += gi->AdvanceX;
 			}
 		}

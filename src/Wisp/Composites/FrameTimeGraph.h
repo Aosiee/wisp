@@ -8,6 +8,7 @@
 #include <cmath>
 #include <memory>
 #include <string>
+#include "Wisp/StyleTokens.h"
 
 namespace wisp {
 
@@ -40,7 +41,7 @@ public:
 		m_FrameCount++;
 	}
 
-	void SetHighWaterline(float y) { m_Graph->SetHighWaterline(y, {0.9f,0.3f,0.3f,1}); }
+	void SetHighWaterline(float y) { m_Graph->SetHighWaterline(y, wisp::tokens::Error); }
 	void SetLowWaterline(float y)  { m_Graph->SetLowWaterline(y, {0.3f,0.3f,0.9f,1}); }
 	void SetHighWaterEnabled(bool e) { m_Graph->SetHighWaterEnabled(e); }
 	void SetLowWaterEnabled(bool e)  { m_Graph->SetLowWaterEnabled(e); }
@@ -76,7 +77,7 @@ public:
 				latestMs, fps, m_Data->Series("draw_calls").Latest(), m_FrameCount);
 			auto ms = m_FontCache->MeasureText(m_Font, buf, m_FontSize * 0.65f);
 			float tx = pos.x + 4, ty = pos.y + h - ms.y - 2;
-			PaintText(drawList, nextLayer, {tx, ty}, buf, {0.7f,0.7f,0.75f,1}, args.InheritedClipIndex, m_FontSize * 0.65f);
+			PaintText(drawList, nextLayer, {tx, ty}, buf, wisp::tokens::TextSecondary, args.InheritedClipIndex, m_FontSize * 0.65f);
 			nextLayer++;
 		}
 		return nextLayer;
@@ -102,8 +103,7 @@ private:
 			const GlyphInfo* gi = m_FontCache->GetGlyph(m_Font, cp, pixelSize);
 			if(gi)
 			{
-				glm::vec2 uv[4]={{gi->AtlasU0,gi->AtlasV0},{gi->AtlasU1,gi->AtlasV0},{gi->AtlasU1,gi->AtlasV1},{gi->AtlasU0,gi->AtlasV1}};
-				dl.AddText(layer, {px, py + gi->BearingY}, std::string(1,(char)cp), uv, gi->AdvanceX, gi->Height, tint, clip);
+				wisp::AddGlyph(dl, layer, { px, py }, *gi, tint, clip);
 				px += gi->AdvanceX;
 			}
 		}

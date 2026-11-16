@@ -10,6 +10,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include "Wisp/StyleTokens.h"
 
 namespace wisp {
 
@@ -42,10 +43,10 @@ public:
 		float w = geom.LocalSize.x, h = geom.LocalSize.y;
 		int clip = args.InheritedClipIndex;
 
-		drawList.AddBox(layerId, pos, {w,h}, {0.05f,0.05f,0.09f,1}, clip);
+		drawList.AddBox(layerId, pos, {w,h}, wisp::tokens::Panel, clip);
 
 		// Header + mode buttons
-		PaintText(drawList, layerId+1, {pos.x+4, pos.y+4}, "Widget Reflector", {0.3f,0.8f,1.0f,1}, clip);
+		PaintText(drawList, layerId+1, {pos.x+8, pos.y+4 + m_FontCache->GetMetrics(m_Font, m_FontSize).Ascent}, "Widget Reflector", wisp::tokens::TextPrimary, clip);
 
 		DrawModeButtons(drawList, layerId+1, pos, w, clip);
 
@@ -94,7 +95,7 @@ public:
 			float midY = y + rowH * 0.5f;
 
 			if (row.Target == m_Selected)
-				drawList.AddBox(layerId+1, {pos.x+1, y}, {w-2, rowH-1}, {0.2f,0.35f,0.55f,0.6f}, treeClip);
+				drawList.AddBox(layerId+1, {pos.x+1, y}, {w-2, rowH-1}, wisp::tokens::Selection, treeClip);
 
 			// Tree guide lines (connectors to parent)
 			if (row.Depth > 0)
@@ -117,28 +118,28 @@ public:
 			{
 				float ay = y + (rowH - 5) * 0.5f;
 				drawList.AddBox(layerId+2, {indX, ay}, {5, 5},
-					row.Expanded ? glm::vec4(0.9f,0.7f,0.2f,1) : glm::vec4(0.5f,0.5f,0.6f,1), treeClip);
+					row.Expanded ? glm::vec4(0.9f,0.7f,0.2f,1) : wisp::tokens::TextMuted, treeClip);
 			}
 			float textX = indX + (row.HasChildren ? 8 : 4);
 			float inkTop, inkBottom;
 			MeasureInkBox(row.TypeName, textScale, inkTop, inkBottom);
 			float textY = y + (rowH - (inkBottom - inkTop)) * 0.5f - inkTop;
 			PaintText(drawList, layerId+2, {textX, textY}, row.TypeName,
-				row.Vis == Visibility::Collapsed ? glm::vec4(0.45f,0.45f,0.5f,1)
-				: (row.Enabled ? glm::vec4(0.8f,0.8f,0.85f,1) : glm::vec4(0.55f,0.55f,0.6f,1)), treeClip, textScale);
+				row.Vis == Visibility::Collapsed ? wisp::tokens::TextMuted
+				: (row.Enabled ? wisp::tokens::TextPrimary : glm::vec4(0.55f,0.55f,0.6f,1)), treeClip, textScale);
 
 			m_RowRects.push_back({row.Target, {pos.x+1, y, w-2, rowH}});
 			y += rowH;
 		}
 
 		// Inspector
-		drawList.AddBox(layerId+1, {pos.x, inspTop}, {w, h - (inspTop - pos.y) - 1}, {0.06f,0.06f,0.1f,1}, clip);
-		PaintText(drawList, layerId+2, {pos.x+4, inspTop+3}, "Inspector", {0.5f,0.8f,0.5f,1}, clip);
+		drawList.AddBox(layerId+1, {pos.x, inspTop}, {w, h - (inspTop - pos.y) - 1}, wisp::tokens::Panel, clip);
+		PaintText(drawList, layerId+2, {pos.x+8, inspTop+3}, "Inspector", wisp::tokens::TextSecondary, clip);
 
 		if (m_Selected)
 		{
 			float iy = inspTop + 24;
-			auto infoLine = [&](const std::string& label, const std::string& value, const glm::vec4& col = {0.7f,0.7f,0.75f,1}) {
+			auto infoLine = [&](const std::string& label, const std::string& value, const glm::vec4& col = wisp::tokens::TextSecondary) {
 				PaintText(drawList, layerId+2, {pos.x+4, iy}, label + ": " + value, col, clip, 0.7f);
 				iy += 16;
 			};
@@ -147,7 +148,7 @@ public:
 			if (std::strcmp(m_Selected->GetTypeName(), "DockSpace") == 0)
 			{
 				std::string dump = static_cast<DockSpace*>(m_Selected)->DumpModel();
-				PaintText(drawList, layerId+2, {pos.x+4, iy}, "Dock model:", {0.5f,0.8f,0.5f,1}, clip, 0.7f);
+				PaintText(drawList, layerId+2, {pos.x+8, iy}, "Dock model:", wisp::tokens::TextSecondary, clip, 0.7f);
 				iy += 14;
 				size_t from = 0;
 				int lines = 0;
@@ -155,7 +156,7 @@ public:
 				{
 					size_t nl = dump.find('\n', from);
 					std::string line = dump.substr(from, nl == std::string::npos ? std::string::npos : nl - from);
-					PaintText(drawList, layerId+2, {pos.x+8, iy}, line, {0.6f,0.6f,0.65f,1}, clip, 0.55f);
+					PaintText(drawList, layerId+2, {pos.x+8, iy}, line, wisp::tokens::TextSecondary, clip, 0.55f);
 					iy += 13;
 					lines++;
 					if (nl == std::string::npos) break;
@@ -191,7 +192,7 @@ public:
 		}
 		else
 		{
-			PaintText(drawList, layerId+2, {pos.x+4, inspTop+26}, "(click a row to select)", {0.5f,0.5f,0.55f,1}, clip);
+			PaintText(drawList, layerId+2, {pos.x+4, inspTop+26}, "(click a row to select)", wisp::tokens::TextMuted, clip);
 		}
 
 		// Highlight — pick-mode hover target (orange) or selected widget
@@ -365,13 +366,13 @@ private:
 				(d.Button == ReflectorButton::PickHit   && cur == UIApplication::PickMode::HitTest) ||
 				(d.Button == ReflectorButton::PickAbs   && cur == UIApplication::PickMode::Absolute) ||
 				(d.Button == ReflectorButton::PickFocus && cur == UIApplication::PickMode::Focusable);
-			glm::vec4 bg = active ? glm::vec4(0.2f,0.4f,0.6f,1) : glm::vec4(0.1f,0.1f,0.16f,1);
+			glm::vec4 bg = active ? glm::vec4(0.2f,0.4f,0.6f,1) : wisp::tokens::Popup;
 			dl.AddBox(layer, {bx, by}, {bw, 20}, bg, clip);
 			float inkTop, inkBottom;
 			MeasureInkBox(d.Label, 0.7f, inkTop, inkBottom);
 			float ly = by + (20.0f - (inkBottom - inkTop)) * 0.5f - inkTop;
 			PaintText(dl, layer+1, {bx + 5, ly}, d.Label,
-				active ? glm::vec4(1,1,1,1) : glm::vec4(0.7f,0.7f,0.75f,1), clip, 0.7f);
+				active ? glm::vec4(1,1,1,1) : wisp::tokens::TextSecondary, clip, 0.7f);
 			m_ModeRects.push_back({d.Button, {bx, by, bw, 20}});
 			bx += bw + 4;
 		}
@@ -389,7 +390,7 @@ private:
 		MeasureInkBox(status, 0.7f, sInkTop, sInkBottom);
 		float sy = by + (20.0f - (sInkBottom - sInkTop)) * 0.5f - sInkTop;
 		PaintText(dl, layer, {bx + 6, sy}, status,
-			cur != UIApplication::PickMode::None ? glm::vec4(1.0f,0.7f,0.2f,1) : glm::vec4(0.5f,0.5f,0.55f,1), clip, 0.7f);
+			cur != UIApplication::PickMode::None ? glm::vec4(1.0f,0.7f,0.2f,1) : wisp::tokens::TextMuted, clip, 0.7f);
 	}
 
 	void RebuildTree() const
@@ -523,13 +524,13 @@ private:
 			else if((*p&0xE0)==0xC0&&p+1<e){cp=((*p&0x1F)<<6)|(p[1]&0x3F);p+=2;}
 			else if((*p&0xF0)==0xE0&&p+2<e){cp=((*p&0x0F)<<12)|((p[1]&0x3F)<<6)|(p[2]&0x3F);p+=3;}
 			else{p++;continue;}
-			const GlyphInfo* gi = m_FontCache->GetGlyph(m_Font, cp, m_FontSize);
+			// Rasterized AT the scaled size (crisp) - scaling the full-size
+			// quads down blurred every small reflector label.
+			const GlyphInfo* gi = m_FontCache->GetGlyph(m_Font, cp, m_FontSize * scale);
 			if(gi)
 			{
-				glm::vec2 uv[4]={{gi->AtlasU0,gi->AtlasV0},{gi->AtlasU1,gi->AtlasV0},{gi->AtlasU1,gi->AtlasV1},{gi->AtlasU0,gi->AtlasV1}};
-				dl.AddText(layer, {px, py + gi->BearingY * scale}, std::string(1,(char)cp), uv,
-					gi->AdvanceX * scale, gi->Height * scale, tint, clip);
-				px += gi->AdvanceX * scale;
+				wisp::AddGlyph(dl, layer, { px, py }, *gi, tint, clip);
+				px += gi->AdvanceX;
 			}
 		}
 	}
@@ -552,10 +553,10 @@ private:
 			else if((*p&0xE0)==0xC0&&p+1<e){cp=((*p&0x1F)<<6)|(p[1]&0x3F);p+=2;}
 			else if((*p&0xF0)==0xE0&&p+2<e){cp=((*p&0x0F)<<12)|((p[1]&0x3F)<<6)|(p[2]&0x3F);p+=3;}
 			else{p++;continue;}
-			const GlyphInfo* gi = m_FontCache->GetGlyph(m_Font, cp, m_FontSize);
+			const GlyphInfo* gi = m_FontCache->GetGlyph(m_Font, cp, m_FontSize * scale);
 			if (!gi) continue;
-			float top = gi->BearingY * scale;
-			float bottom = (gi->BearingY + gi->Height) * scale;
+			float top = gi->BearingY;
+			float bottom = gi->BearingY + gi->Height;
 			if (first) { outTop = top; outBottom = bottom; first = false; }
 			else { outTop = std::min(outTop, top); outBottom = std::max(outBottom, bottom); }
 		}

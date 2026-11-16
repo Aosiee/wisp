@@ -1,5 +1,10 @@
 #pragma once
 #include "Wisp/Core.h"
+#include "Wisp/Icons.h"
+#include <cmath>
+#include "Wisp/FontCache.h"
+#include "Wisp/Application.h"
+#include "Wisp/StyleTokens.h"
 #include "Wisp/DrawList.h"
 #include "Wisp/Style.h"
 #include "Wisp/Theme.h"
@@ -19,10 +24,10 @@ public:
 	static CheckBoxStyle GetDefaultStyle()
 	{
 		CheckBoxStyle s;
-		s.BoxUnchecked.Tint = { 0.18f, 0.18f, 0.22f, 1.0f };
-		s.BoxChecked.Tint   = { 0.2f, 0.35f, 0.6f, 1.0f };
-		s.BoxHovered.Tint   = { 0.3f, 0.3f, 0.35f, 1.0f };
-		s.CheckMark.Tint    = { 0.4f, 0.8f, 0.4f, 1.0f };
+		s.BoxUnchecked.Tint = tokens::Field;
+		s.BoxChecked.Tint   = tokens::Accent;
+		s.BoxHovered.Tint   = tokens::FieldHover;
+		s.CheckMark.Tint    = tokens::TextOnAccent;
 		return s;
 	}
 
@@ -46,14 +51,36 @@ public:
 			m_StyleDirty = false;
 		}
 		glm::vec2 absPos = geom.LocalToAbsolute({ 0, 0 });
-		float boxY = absPos.y + 2.0f;
 		float bs = m_Style.BoxSize;
+		float boxY = std::round(absPos.y + std::max(0.0f, (geom.LocalSize.y - bs) * 0.5f));
 
-		glm::vec4 bgCol = m_IsHovered ? m_Style.BoxHovered.Tint : m_Style.BoxUnchecked.Tint;
-		drawList.AddBox(layerId, { absPos.x, boxY }, { bs, bs }, bgCol, args.InheritedClipIndex);
-
+		// A rounded field box; checked = the accent fill + the TinyIcons
+		// check.
+		const float r = tokens::RadiusSmall;
+		const float rr[4] = { r, r, r, r };
 		if (m_Checked)
-			drawList.AddBox(layerId + 1, { absPos.x + 3.0f, boxY + 3.0f }, { bs - 6.0f, bs - 6.0f }, m_Style.CheckMark.Tint, args.InheritedClipIndex);
+		{
+			drawList.AddRoundedBox(layerId, { absPos.x, boxY }, { bs, bs },
+				m_IsHovered ? tokens::AccentHover : m_Style.BoxChecked.Tint, rr, 0.0f, glm::vec4(0.0f), args.InheritedClipIndex);
+			if (UIApplication::IsValid() && UIApplication::Get().GetFontCache())
+			{
+				FontCache* fc = UIApplication::Get().GetFontCache();
+				const FontHandle icon = UIApplication::Get().GetFont(FontRole::Icons);
+				const float px = bs - 2.0f;
+				if (const GlyphInfo* g = fc->GetGlyph(icon, icons::cp::Check, px))
+				{
+					const FontMetrics m = fc->GetMetrics(icon, px);
+					AddGlyph(drawList, layerId + 1, { absPos.x + (bs - g->AdvanceX) * 0.5f, boxY + (bs - m.LineHeight) * 0.5f + m.Ascent },
+						*g, m_Style.CheckMark.Tint, args.InheritedClipIndex);
+				}
+			}
+		}
+		else
+		{
+			drawList.AddRoundedBox(layerId, { absPos.x, boxY }, { bs, bs },
+				m_IsHovered ? m_Style.BoxHovered.Tint : m_Style.BoxUnchecked.Tint, rr, 1.0f,
+				m_IsHovered ? tokens::TextMuted : tokens::BorderStrong, args.InheritedClipIndex);
+		}
 
 		return layerId + 2;
 	}

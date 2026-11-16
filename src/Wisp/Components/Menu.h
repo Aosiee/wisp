@@ -11,6 +11,7 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include "Wisp/StyleTokens.h"
 
 namespace wisp {
 
@@ -72,7 +73,7 @@ public:
 		float w = geom.LocalSize.x;
 		int clipIdx = args.InheritedClipIndex;
 
-		drawList.AddBox(layerId, absPos, {w, geom.LocalSize.y}, glm::vec4(0.1f, 0.1f, 0.16f, 0.97f), clipIdx);
+		drawList.AddBox(layerId, absPos, {w, geom.LocalSize.y}, wisp::tokens::Popup, clipIdx);
 
 		float y = absPos.y + 4;
 		int rowLayer = layerId + 1;
@@ -81,7 +82,7 @@ public:
 			auto& item = m_Items[i];
 			if (item.bSeparator)
 			{
-				drawList.AddBox(rowLayer, {absPos.x + 8, y + 2}, {w - 16, 1}, glm::vec4(0.25f, 0.25f, 0.35f, 1), clipIdx);
+				drawList.AddBox(rowLayer, {absPos.x + 8, y + 2}, {w - 16, 1}, wisp::tokens::Separator, clipIdx);
 				y += 6;
 				continue;
 			}
@@ -89,19 +90,19 @@ public:
 			float rowH = m_FontSize * 1.8f;
 			bool hovered = ((int)i == m_HoveredIdx);
 			if (hovered && item.bEnabled)
-				drawList.AddBox(rowLayer, {absPos.x + 2, y}, {w - 4, rowH}, glm::vec4(0.25f, 0.5f, 0.8f, 0.8f), clipIdx);
+				drawList.AddBox(rowLayer, {absPos.x + 2, y}, {w - 4, rowH}, wisp::tokens::Accent, clipIdx);
 
 			if (m_FontCache)
 			{
-				glm::vec4 c = item.bEnabled ? glm::vec4(0.9f, 0.9f, 0.95f, 1) : glm::vec4(0.4f, 0.4f, 0.5f, 1);
+				glm::vec4 c = item.bEnabled ? wisp::tokens::TextPrimary : wisp::tokens::TextMuted;
 				PaintText(drawList, item.Label, absPos.x + 10, y + 4, c, rowLayer + 1, clipIdx);
 
 				if (!item.Shortcut.empty())
-					PaintText(drawList, item.Shortcut, absPos.x + w - 50, y + 4, glm::vec4(0.5f, 0.5f, 0.6f, 1), rowLayer + 1, clipIdx);
+					PaintText(drawList, item.Shortcut, absPos.x + w - 50, y + 4, wisp::tokens::TextMuted, rowLayer + 1, clipIdx);
 
 				if (item.SubMenu)
 				{
-					PaintText(drawList, ">", absPos.x + w - 18, y + 4, glm::vec4(0.5f, 0.5f, 0.6f, 1), rowLayer + 1, clipIdx);
+					PaintText(drawList, ">", absPos.x + w - 18, y + 4, wisp::tokens::TextMuted, rowLayer + 1, clipIdx);
 				}
 			}
 			y += rowH;
@@ -167,7 +168,7 @@ private:
 			uint32_t cp;
 			if((*p&0x80)==0){cp=*p;p++;}else if((*p&0xE0)==0xC0&&p+1<e){cp=((*p&0x1F)<<6)|(p[1]&0x3F);p+=2;}else if((*p&0xF0)==0xE0&&p+2<e){cp=((*p&0x0F)<<12)|((p[1]&0x3F)<<6)|(p[2]&0x3F);p+=3;}else{p++;continue;}
 			const GlyphInfo* g = m_FontCache->GetGlyph(m_Font, cp, m_FontSize);
-			if(g){glm::vec2 uv[4]={{g->AtlasU0,g->AtlasV0},{g->AtlasU1,g->AtlasV0},{g->AtlasU1,g->AtlasV1},{g->AtlasU0,g->AtlasV1}};dl.AddText(layer,{px+g->BearingX,y+m.Ascent+g->BearingY},std::string(1,(char)cp),uv,g->AdvanceX,g->Height,col,clip);px+=g->AdvanceX;}
+			if(g){wisp::AddGlyph(dl, layer, { px, y+m.Ascent }, *g, col, clip);px+=g->AdvanceX;}
 		}
 	}
 
@@ -214,7 +215,7 @@ public:
 		float w = geom.LocalSize.x, h = geom.LocalSize.y;
 		int clipIdx = args.InheritedClipIndex;
 
-		drawList.AddBox(layerId, absPos, {w, h}, glm::vec4(0.08f, 0.08f, 0.14f, 1), clipIdx);
+		drawList.AddBox(layerId, absPos, {w, h}, wisp::tokens::Backdrop, clipIdx);
 
 		m_CachedAbsX = absPos.x;
 		m_CachedAbsY = absPos.y;
@@ -226,9 +227,9 @@ public:
 			float tw = m_FontCache->MeasureText(m_Font, m_Entries[i].Label, m_FontSize).x;
 			bool hovered = ((int)i == m_HoveredIdx);
 			if (hovered)
-				drawList.AddBox(layerId + 1, {x - 2, absPos.y}, {tw + 20, h}, glm::vec4(0.2f, 0.35f, 0.6f, 1), clipIdx);
+				drawList.AddBox(layerId + 1, {x - 2, absPos.y}, {tw + 20, h}, wisp::tokens::Accent, clipIdx);
 
-			glm::vec4 c = hovered ? glm::vec4(1,1,1,1) : glm::vec4(0.8f, 0.8f, 0.85f, 1);
+			glm::vec4 c = hovered ? glm::vec4(1,1,1,1) : wisp::tokens::TextPrimary;
 			FontMetrics m = m_FontCache->GetMetrics(m_Font, m_FontSize);
 			const uint8_t* p = (const uint8_t*)m_Entries[i].Label.data();
 			const uint8_t* e = p + m_Entries[i].Label.size();
@@ -239,7 +240,7 @@ public:
 				uint32_t cp;
 				if((*p&0x80)==0){cp=*p;p++;}else if((*p&0xE0)==0xC0&&p+1<e){cp=((*p&0x1F)<<6)|(p[1]&0x3F);p+=2;}else if((*p&0xF0)==0xE0&&p+2<e){cp=((*p&0x0F)<<12)|((p[1]&0x3F)<<6)|(p[2]&0x3F);p+=3;}else{p++;continue;}
 				const GlyphInfo* g = m_FontCache->GetGlyph(m_Font, cp, m_FontSize);
-				if(g){glm::vec2 uv[4]={{g->AtlasU0,g->AtlasV0},{g->AtlasU1,g->AtlasV0},{g->AtlasU1,g->AtlasV1},{g->AtlasU0,g->AtlasV1}};drawList.AddText(layerId+3,{px+g->BearingX,ty+m.Ascent+g->BearingY},std::string(1,(char)cp),uv,g->AdvanceX,g->Height,c,clipIdx);px+=g->AdvanceX;}
+				if(g){wisp::AddGlyph(drawList, layerId+3, { px, ty+m.Ascent }, *g, c, clipIdx);px+=g->AdvanceX;}
 			}
 
 			x += tw + 24;
@@ -301,7 +302,7 @@ private:
 			if (item.bSeparator)
 			{
 				auto sep = std::make_unique<Border>();
-				sep->SetBrush({glm::vec4(0.25f, 0.25f, 0.35f, 1)});
+				sep->SetBrush({wisp::tokens::Separator});
 				auto sepSize = std::make_unique<SizeBox>();
 				sepSize->SetHeightOverride(1.0f);
 				sepSize->SetChild(std::move(sep));
@@ -310,22 +311,22 @@ private:
 			}
 
 			auto row = std::make_unique<Button>();
-			row->SetNormalBrush({glm::vec4(0.1f, 0.1f, 0.16f, 1)});
-			row->SetHoveredBrush({glm::vec4(0.25f, 0.5f, 0.8f, 0.8f)});
-			row->SetPressedBrush({glm::vec4(0.15f, 0.3f, 0.5f, 1)});
+			row->SetNormalBrush({wisp::tokens::Popup});
+			row->SetHoveredBrush({wisp::tokens::Accent});
+			row->SetPressedBrush({wisp::tokens::AccentPressed});
 
-			auto label = std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize, item.Label, glm::vec4(0.9f, 0.9f, 0.95f, 1));
+			auto label = std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize, item.Label, wisp::tokens::TextPrimary);
 			auto hbox = std::make_unique<HorizontalBox>(BoxOrientation::Horizontal);
 			hbox->AddChild(std::move(label));
 
 			if (!item.Shortcut.empty())
 			{
-				auto sc = std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize, item.Shortcut, glm::vec4(0.5f, 0.5f, 0.6f, 1));
+				auto sc = std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize, item.Shortcut, wisp::tokens::TextMuted);
 				hbox->AddChild(std::move(sc));
 			}
 			if (item.SubMenu)
 			{
-				auto arrow = std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize, ">", glm::vec4(0.5f, 0.5f, 0.6f, 1));
+				auto arrow = std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize, ">", wisp::tokens::TextMuted);
 				hbox->AddChild(std::move(arrow));
 			}
 
@@ -342,7 +343,7 @@ private:
 		}
 
 		auto border = std::make_unique<Border>();
-		border->SetBrush({glm::vec4(0.1f, 0.1f, 0.16f, 0.97f)});
+		border->SetBrush({wisp::tokens::Popup});
 		border->SetPadding(2);
 		border->SetChild(std::move(list));
 

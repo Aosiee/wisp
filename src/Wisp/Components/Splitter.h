@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Wisp/Core.h"
+#include "Wisp/StyleTokens.h"
 #include "Wisp/DrawList.h"
 #include "Wisp/Docking/DockModel.h"
 #include <functional>
@@ -175,7 +176,7 @@ public:
 		// Paint dividers
 		for (auto& dr : m_DividerRects)
 		{
-			glm::vec4 col = glm::vec4(0.16f,0.16f,0.24f,1);
+			glm::vec4 col = tokens::Backdrop;
 			drawList.AddBox(layerId, dr.Min, {dr.Max.x - dr.Min.x, dr.Max.y - dr.Min.y}, col, args.InheritedClipIndex);
 		}
 

@@ -11,6 +11,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "Wisp/StyleTokens.h"
 
 namespace wisp {
 
@@ -311,7 +312,7 @@ public:
 				char buf[64];
 				float latest = s ? s->Latest() : 0;
 				snprintf(buf, sizeof(buf), "%s %.1f", m_SeriesNames[si].c_str(), latest);
-				PaintText(drawList, layerId+7, {legX + 14, legY - 1}, buf, {0.8f,0.8f,0.85f,1}, clip, m_FontSize);
+				PaintText(drawList, layerId+7, {legX + 14, legY - 1}, buf, wisp::tokens::TextPrimary, clip, m_FontSize);
 			}
 			legY += 16;
 		}
@@ -337,8 +338,7 @@ private:
 			const GlyphInfo* gi = m_FontCache->GetGlyph(m_Font, cp, pixelSize);
 			if(gi)
 			{
-				glm::vec2 uv[4]={{gi->AtlasU0,gi->AtlasV0},{gi->AtlasU1,gi->AtlasV0},{gi->AtlasU1,gi->AtlasV1},{gi->AtlasU0,gi->AtlasV1}};
-				dl.AddText(layer, {px, py + gi->BearingY}, std::string(1,(char)cp), uv, gi->AdvanceX, gi->Height, tint, clip);
+				wisp::AddGlyph(dl, layer, { px, py }, *gi, tint, clip);
 				px += gi->AdvanceX;
 			}
 		}

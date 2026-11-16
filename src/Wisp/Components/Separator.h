@@ -4,6 +4,7 @@
 #include "Wisp/DrawList.h"
 #include "Wisp/Style.h"
 #include "Wisp/Theme.h"
+#include "Wisp/StyleTokens.h"
 
 namespace wisp {
 
@@ -17,7 +18,7 @@ struct SeparatorStyle
 inline SeparatorStyle GetDefaultSeparatorStyle()
 {
 	SeparatorStyle s;
-	s.Line.Tint = { 0.2f, 0.2f, 0.3f, 1.0f };
+	s.Line.Tint = wisp::tokens::Separator;
 	return s;
 }
 

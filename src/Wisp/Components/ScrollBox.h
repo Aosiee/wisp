@@ -1,5 +1,7 @@
 #pragma once
 #include "Wisp/Core.h"
+#include "Wisp/Application.h"
+#include "Wisp/StyleTokens.h"
 #include "Wisp/DrawList.h"
 #include <functional>
 
@@ -14,6 +16,9 @@ public:
 
 	void SetChild(std::unique_ptr<Widget> child) { m_Child = std::move(child); if (m_Child) SetupParentChild(this, m_Child.get()); }
 	ScrollBox& SetViewportHeight(float h) { m_ForcedHeight = h; InvalidateLayout(); return *this; }
+	// Vertical-only scrolling: the child is laid out at the viewport width
+	// (an inspector's rows compress; nothing ever scrolls sideways).
+	ScrollBox& SetFitWidth(bool fit) { m_FitWidth = fit; InvalidateLayout(); return *this; }
 
 
 
@@ -34,7 +39,7 @@ public:
 		glm::vec2 childSize = m_Child->GetCachedDesiredSize();
 		glm::vec2 viewSize = geom.LocalSize;
 		if (m_ForcedHeight > 0) viewSize.y = m_ForcedHeight;
-		childSize.x = std::max(childSize.x, viewSize.x - m_ScrollBarWidth);
+		childSize.x = m_FitWidth ? std::max(0.0f, viewSize.x - m_ScrollBarWidth) : std::max(childSize.x, viewSize.x - m_ScrollBarWidth);
 		childSize.y = std::max(childSize.y, viewSize.y);
 		glm::vec2 offset = { -m_ScrollOffset.x, -m_ScrollOffset.y };
 		out.Add(m_Child.get(), geom.MakeChild(offset, childSize));
@@ -52,7 +57,7 @@ public:
 		float viewH = m_CachedViewportHeight;
 		float maxScrollY = std::max(0.0f, contentSize.y - viewH);
 		m_ScrollOffset.y = std::max(0.0f, std::min(m_ScrollOffset.y, maxScrollY));
-		float maxScrollX = std::max(0.0f, contentSize.x - geom.LocalSize.x + m_ScrollBarWidth);
+		float maxScrollX = m_FitWidth ? 0.0f : std::max(0.0f, contentSize.x - geom.LocalSize.x + m_ScrollBarWidth);
 		m_ScrollOffset.x = std::max(0.0f, std::min(m_ScrollOffset.x, maxScrollX));
 
 		glm::vec2 absPos = geom.LocalToAbsolute({ 0, 0 });
@@ -84,8 +89,16 @@ public:
 		m_ScrollBarAbsX = barX;
 		m_ScrollBarAbsY = absPos.y;
 
-			drawList.AddBox(nextLayer, { barX, absPos.y }, { m_ScrollBarWidth, trackH }, glm::vec4(0.1f, 0.1f, 0.13f, 1.0f), clipIdx);
-			drawList.AddBox(nextLayer + 1, { barX + 1, absPos.y + thumbY }, { m_ScrollBarWidth - 2, thumbH }, glm::vec4(0.3f, 0.3f, 0.35f, 1.0f), clipIdx);
+			// No track, a slim rounded thumb that widens + brightens while
+			// the pointer is over the bar.
+			const glm::vec2 mouse = UIApplication::IsValid() ? UIApplication::Get().GetMousePos() : glm::vec2(-1.0f);
+			const bool barHot = mouse.x >= barX - 2.0f && mouse.x <= barX + m_ScrollBarWidth
+				&& mouse.y >= absPos.y && mouse.y <= absPos.y + trackH;
+			const float thumbW = barHot ? m_ScrollBarWidth - 3.0f : 5.0f;
+			const float r = thumbW * 0.5f;
+			const float rr[4] = { r, r, r, r };
+			drawList.AddRoundedBox(nextLayer + 1, { barX + m_ScrollBarWidth - thumbW - 2.0f, absPos.y + thumbY + 2.0f },
+				{ thumbW, std::max(8.0f, thumbH - 4.0f) }, barHot ? tokens::TextMuted : tokens::WithAlpha(tokens::BorderStrong, 0.95f), rr, 0.0f, glm::vec4(0.0f), clipIdx);
 			nextLayer += 2;
 		}
 
@@ -162,6 +175,7 @@ private:
 	std::unique_ptr<Widget> m_Child;
 	mutable glm::vec2 m_ScrollOffset = { 0, 0 };
 	float m_ScrollBarWidth = 10.0f;
+	bool m_FitWidth = false;
 	float m_ForcedHeight = -1.0f;  // <0 = use parent-allocated height
 
 	// Cache for scrollbar interaction
