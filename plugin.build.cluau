@@ -68,7 +68,7 @@ let wisp_sources = {
     glob("src/**/*.cpp"),
 }
 
-let wisp_defines = {
+const wisp_defines: { string? } = {
     "GLFW_INCLUDE_NONE",
     "_CRT_SECURE_NO_WARNINGS",
     conf_define,
@@ -99,36 +99,38 @@ module "wisp" {
     cpp_std = "c++20",
 }
 
+const wisp_editor_defines: { string? } = {
+    "TE_EDITOR",
+    "GLFW_INCLUDE_NONE",
+    "_CRT_SECURE_NO_WARNINGS",
+    conf_define,
+    is_linux && "TE_PLATFORM_LINUX" || "TE_PLATFORM_WINDOWS",
+    conf_shipping_define,
+}
 module "wisp_editor" {
     sources = is_editor_build && wisp_sources || {},
     pch = "src/tepch.h",
     public_includes = { "src" },
-    private_defines = {
-        "TE_EDITOR",
-        "GLFW_INCLUDE_NONE",
-        "_CRT_SECURE_NO_WARNINGS",
-        conf_define,
-        is_linux && "TE_PLATFORM_LINUX" || "TE_PLATFORM_WINDOWS",
-        conf_shipping_define,
-    },
+    private_defines = wisp_editor_defines,
     deps = wisp_deps,
     flags = sanitizers.flags,
     public_link_flags = sanitizers.link_flags,
     cpp_std = "c++20",
 }
 
+const wisp_tool_defines: { string? } = {
+    "TE_TOOL",
+    "GLFW_INCLUDE_NONE",
+    "_CRT_SECURE_NO_WARNINGS",
+    conf_define,
+    is_linux && "TE_PLATFORM_LINUX" || "TE_PLATFORM_WINDOWS",
+    conf_shipping_define,
+}
 module "wisp_tool" {
     sources = is_tool_build && wisp_sources || {},
     pch = "src/tepch.h",
     public_includes = { "src" },
-    private_defines = {
-        "TE_TOOL",
-        "GLFW_INCLUDE_NONE",
-        "_CRT_SECURE_NO_WARNINGS",
-        conf_define,
-        is_linux && "TE_PLATFORM_LINUX" || "TE_PLATFORM_WINDOWS",
-        conf_shipping_define,
-    },
+    private_defines = wisp_tool_defines,
     deps = {
         public = {
             "engine/engine_tool", "debug_draw/debug_draw", "math/math",
