@@ -693,6 +693,21 @@ void UIApplication::RequestAnimationTick(Widget* w)
 	if (ctx) ctx->NextAnimatingWidgets.insert(w);
 }
 
+void UIApplication::ResetToolTip(const Widget* w)
+{
+	for (auto& ctx : m_Contexts)
+	{
+		if (ctx->TooltipTarget != w)
+			continue;
+		ctx->TooltipDwell = 0.0f;
+		if (ctx->TooltipShown)
+		{
+			DismissPopups(ctx.get());
+			ctx->TooltipShown = false;
+		}
+	}
+}
+
 void UIApplication::CancelAnimationTick(Widget* w)
 {
 	for (auto& ctx : m_Contexts)

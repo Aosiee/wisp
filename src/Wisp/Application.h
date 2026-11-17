@@ -288,6 +288,10 @@ public:
 	// Animation tick registration — widgets call these during OnPaint/events
 	void RequestAnimationTick(Widget* w);
 	void CancelAnimationTick(Widget* w);
+	// A widget whose tooltip depends on WHERE it is hovered (a painted list's
+	// row) restarts it when that changes: the shown tooltip goes, the dwell
+	// starts again (what a change of hovered widget does).
+	void ResetToolTip(const Widget* w);
 
 	// Widget picking — persistent pick mode with live hover tracking.
 	// While active, GetPickedWidget() returns the widget under the cursor
