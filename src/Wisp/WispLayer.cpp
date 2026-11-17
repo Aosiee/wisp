@@ -71,6 +71,9 @@ void WispLayer::RouteEvent(TinyEngine::Event& event)
 				mods |= 1;
 			if (glfwGetKey(win, TE_KEY_LEFT_CONTROL) == GLFW_PRESS || glfwGetKey(win, TE_KEY_RIGHT_CONTROL) == GLFW_PRESS)
 				mods |= 2;
+			// Alt = 4 (the Script Editor's history and peek).
+			if (glfwGetKey(win, TE_KEY_LEFT_ALT) == GLFW_PRESS || glfwGetKey(win, TE_KEY_RIGHT_ALT) == GLFW_PRESS)
+				mods |= 4;
 		}
 		return app.OnKeyDown(window, e.GetKeyCode(), mods);
 	});
@@ -91,6 +94,9 @@ void WispLayer::RouteEvent(TinyEngine::Event& event)
 				mods |= 1;
 			if (glfwGetKey(win, TE_KEY_LEFT_CONTROL) == GLFW_PRESS || glfwGetKey(win, TE_KEY_RIGHT_CONTROL) == GLFW_PRESS)
 				mods |= 2;
+			// Alt = 4 (the Script Editor's history and peek).
+			if (glfwGetKey(win, TE_KEY_LEFT_ALT) == GLFW_PRESS || glfwGetKey(win, TE_KEY_RIGHT_ALT) == GLFW_PRESS)
+				mods |= 4;
 		}
 		return app.OnKeyUp(window, e.GetKeyCode(), mods);
 	});

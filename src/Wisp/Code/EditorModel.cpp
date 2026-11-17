@@ -269,6 +269,24 @@ namespace wisp::code {
 		Commit();
 	}
 
+	void EditorModel::ApplyEdits(std::vector<std::pair<TextRange, std::string>> edits)
+	{
+		if (edits.empty())
+			return;
+		// Back to front, so each range is still where it was.
+		std::sort(edits.begin(), edits.end(), [](const auto& a, const auto& b) { return b.first.Start < a.first.Start; });
+		BreakUndoGroup();
+		Begin(Kind::Other);
+		for (const auto& [range, text] : edits)
+			Apply(range, text);
+		for (Caret& caret : m_Carets)
+		{
+			caret.Pos = m_Doc.Clamp(caret.Pos);
+			caret.Anchor = m_Doc.Clamp(caret.Anchor);
+		}
+		Commit();
+	}
+
 	bool EditorModel::Undo()
 	{
 		if (m_Undo.empty())

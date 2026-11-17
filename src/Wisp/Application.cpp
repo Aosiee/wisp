@@ -903,13 +903,13 @@ namespace {
 	// GLFW's left/right Shift (340/344) and Control (341/345).
 	int ModifierBitOf(int key)
 	{
-		return (key == 340 || key == 344) ? 1 : (key == 341 || key == 345) ? 2 : 0;
+		return (key == 340 || key == 344) ? 1 : (key == 341 || key == 345) ? 2 : (key == 342 || key == 346) ? 4 : 0;
 	}
 }
 
 bool UIApplication::OnKeyDown(void* window, int key, int mods)
 {
-	m_HeldModifiers = (mods & 3) | ModifierBitOf(key);
+	m_HeldModifiers = (mods & 7) | ModifierBitOf(key);
 	WindowContext* ctx = window ? GetWindowContext(window) : GetFocusedContext();
 	if (!ctx) return false;
 	// Escape cancels an active drag (payload restores its snapshot)
@@ -1018,7 +1018,7 @@ bool UIApplication::OnKeyDown(void* window, int key, int mods)
 
 bool UIApplication::OnKeyUp(void* window, int key, int mods)
 {
-	m_HeldModifiers = (mods & 3) & ~ModifierBitOf(key);
+	m_HeldModifiers = (mods & 7) & ~ModifierBitOf(key);
 	WindowContext* ctx = window ? GetWindowContext(window) : GetFocusedContext();
 	if (!ctx) return false;
 

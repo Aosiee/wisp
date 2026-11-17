@@ -376,4 +376,18 @@ TEST_CASE("code model: whole-word find and the match index")
 	CHECK(model.Doc().Line(0) == "self.rate = rate + speedUp");
 }
 
+TEST_CASE("code model: a rename's edits apply as one undo step, the caret kept")
+{
+	EditorModel model("let speed = 1\nprint(speed, speed)\n");
+	model.SetCaret(P(1, 15), false);
+	model.ApplyEdits({ { { P(1, 13), P(1, 18) }, "v" }, { { P(0, 4), P(0, 9) }, "v" }, { { P(1, 6), P(1, 11) }, "v" } });
+	CHECK(model.Doc().Line(0) == "let v = 1");
+	CHECK(model.Doc().Line(1) == "print(v, v)");
+	CHECK(model.PrimaryCaret().Pos == P(1, 11)); // clamped to the shorter line
+	REQUIRE(model.Undo());
+	CHECK(model.Doc().Line(0) == "let speed = 1");
+	CHECK(model.Doc().Line(1) == "print(speed, speed)");
+	CHECK(!model.Undo());
+}
+
 } // namespace wisp_code_tests

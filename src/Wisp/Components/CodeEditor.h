@@ -31,6 +31,15 @@
 // whole-word occurrences; Ctrl+wheel and Ctrl+= / Ctrl+- / Ctrl+0 zoom
 // (SetOnZoom persists it); fold chevrons show while the pointer is over the
 // gutter. SetOnKey sees every key first (the host's tab commands).
+//
+// The host's navigation commands (F12 /
+// Ctrl+click: definition, Alt+F12: peek, Shift+F12: references, F2: rename,
+// Ctrl+.: quick fix, Alt+Left / Alt+Right and the mouse's back / forward
+// buttons: history) reach SetOnCommand; Alt+click adds a caret. SetOverlays
+// paints the host's semantic colours and inlay hints (a hint is a run of
+// virtual columns: the caret, clicks and selections step over it), each line
+// keeping its own while its text is unchanged. ShowPeek is a read-only,
+// coloured excerpt of another file under the caret's line.
 
 #include "Wisp/Application.h"
 #include "Wisp/Code/EditorModel.h"
@@ -40,6 +49,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -134,6 +144,38 @@ namespace wisp {
 		// false when there is none.
 		bool GoToMarker(bool backwards);
 
+		// Navigation.
+		enum class Command : uint8_t { Definition, Peek, References, Rename, QuickFix, Back, Forward };
+		void SetOnCommand(std::function<void(Command, code::TextPos)> fn) { m_OnCommand = std::move(fn); }
+		struct SemanticSpan
+		{
+			int Line = 0;
+			int Col = 0;
+			int Length = 0;
+			glm::vec4 Colour{ 1.0f };
+		};
+		struct InlayHint
+		{
+			int Line = 0;
+			int Col = 0; // painted before this column
+			std::string Text;
+		};
+		// Both against the current text (the host checks its version).
+		void SetOverlays(std::vector<SemanticSpan> spans, std::vector<InlayHint> hints);
+		void SetShowInlayHints(bool show) { m_ShowInlays = show; }
+		bool GetShowInlayHints() const { return m_ShowInlays; }
+		// `lines` start at file line `firstLine` (0-based); `focusLine` is
+		// highlighted. Escape closes it; Enter or a click on it opens.
+		void ShowPeek(code::TextPos anchor, std::string title, std::vector<std::string> lines, int firstLine, int focusLine,
+			std::shared_ptr<const code::ITokenizer> tokenizer);
+		void ClosePeek() { m_Peek.Visible = false; }
+		bool IsPeekOpen() const { return m_Peek.Visible; }
+		void SetOnPeekOpen(std::function<void()> fn) { m_OnPeekOpen = std::move(fn); }
+		// The display column (visual column plus the hints before it).
+		int DisplayColumn(int line, int col) const;
+		// A text position's top-left on screen (the last paint's layout).
+		glm::vec2 ScreenPosOf(code::TextPos pos) const;
+
 		glm::vec2 ComputeDesiredSize() const override { return { 240.0f, 160.0f }; }
 		void ArrangeChildren(const Geometry&, ArrangedChildren&) const override {}
 		int OnPaint(const PaintArgs& args, const Geometry& geom, DrawList& drawList, int layerId, const WidgetStyleContext& style) const override;
@@ -194,6 +236,20 @@ namespace wisp {
 		size_t FindHighlight(const std::string& text, size_t from) const;
 		void Zoom(float size);
 		std::vector<const Marker*> MarkersAt(code::TextPos pos) const;
+		// A line's overlay (its own, or a neighbour's while lines
+		// move above it), the hint columns before a column, and the byte
+		// column at a display column.
+		struct LineOverlay
+		{
+			std::string Text;
+			std::vector<SemanticSpan> Spans;
+			std::vector<InlayHint> Hints;
+		};
+		const LineOverlay* OverlayFor(int line) const;
+		int HintShift(int line, int col, bool inclusive) const;
+		int ColumnAtDisplay(int line, float display, bool round) const;
+		static int HintWidth(const InlayHint& hint);
+		void PaintPeek(DrawList& dl, int layer, int clip) const;
 
 		FontCache* m_FontCache;
 		FontHandle m_Font;
@@ -264,6 +320,23 @@ namespace wisp {
 		mutable std::vector<int> m_StickyLines;     // the sticky headers the last paint showed
 		mutable float m_CompletionRowHeight = 18.0f;
 		bool m_Hovered = false;
+
+		std::function<void(Command, code::TextPos)> m_OnCommand;
+		std::vector<LineOverlay> m_Overlays;
+		bool m_ShowInlays = true;
+		struct PeekState
+		{
+			bool Visible = false;
+			code::TextPos Anchor;
+			std::string Title;
+			std::vector<std::string> Lines;
+			std::vector<std::vector<code::Token>> Tokens;
+			int FirstLine = 0;
+			int FocusLine = 0;
+		};
+		PeekState m_Peek;
+		mutable glm::vec4 m_PeekRect{ 0.0f };
+		std::function<void()> m_OnPeekOpen;
 
 		bool m_HasFocus = false;
 		float m_LastActivity = -1.0f; // the anim time of the last edit / move (the caret stays solid)

@@ -214,9 +214,9 @@ public:
 
 	void TickAnimation(float dt);
 	static float GetAnimTime() { return s_Instance ? s_Instance->m_AnimTime : 0.0f; }
-	// The modifiers held now (1 = Shift, 2 = Ctrl, the key events' bits),
-	// tracked from the Shift/Ctrl keys' own down/up - mouse events carry
-	// none, so a Shift- or Ctrl-click asks here.
+	// The modifiers held now (1 = Shift, 2 = Ctrl, 4 = Alt, the key events' bits),
+	// tracked from the Shift/Ctrl keys' own down/up - mouse events carry none, so a
+	// Shift- or Ctrl-click asks here.
 	int GetHeldModifiers() const { return m_HeldModifiers; }
 	bool IsDragActive() const { return m_DragOp.has_value(); }
 

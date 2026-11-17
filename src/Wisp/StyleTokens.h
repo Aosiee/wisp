@@ -112,7 +112,16 @@ inline constexpr float CodeInlineDiagnosticAlpha = 0.78f;
 inline constexpr float CodeKindChipAlpha = 0.18f;
 inline constexpr glm::vec4 CodeIndentGuideActive = Hex(0xFFFFFF, 0.22f);
 inline constexpr glm::vec4 CodeScrollThumb  = Hex(0xFFFFFF, 0.24f);
-// Bracket pairs cycle three colours by depth.
+// Bracket pairs cycle three colours by depth. The semantic colours (by
+// binding) and inlay hints.
+inline constexpr glm::vec4 SyntaxLocal      = Hex(0x9CDCFE);
+inline constexpr glm::vec4 SyntaxParam      = Hex(0xD7BA7D);
+inline constexpr glm::vec4 SyntaxUpvalue    = Hex(0x75BEFF);
+inline constexpr glm::vec4 SyntaxProperty   = Hex(0xBFD9EE);
+inline constexpr glm::vec4 SyntaxBuiltin    = Hex(0x4FC1FF);
+inline constexpr glm::vec4 CodeInlayText    = Hex(0x8B8B94);
+inline constexpr glm::vec4 CodeInlayChip    = Hex(0xFFFFFF, 0.05f);
+inline constexpr glm::vec4 CodePeekFocus    = Hex(0xE0A82E, 0.14f);
 inline constexpr glm::vec4 SyntaxBracket1   = Hex(0xFFD700);
 inline constexpr glm::vec4 SyntaxBracket2   = Hex(0xDA70D6);
 inline constexpr glm::vec4 SyntaxBracket3   = Hex(0x179FFF);

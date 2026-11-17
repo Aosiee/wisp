@@ -171,7 +171,11 @@ public:
 				}
 			}
 
-			penX += std::round(advance);
+			// The unrounded advance, as MeasureText sums it (AddGlyph snaps
+			// each quad) - a rounded pen painted a monospace run ~0.4 px per
+			// glyph wider than it measured, so the next text in a row
+			// overprinted its tail.
+			penX += advance;
 			lineW += advance;
 			prevCp = cp;
 		}

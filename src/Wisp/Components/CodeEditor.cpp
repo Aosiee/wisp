@@ -20,11 +20,14 @@ namespace wisp {
 			kBracketLeft = 91, kBracketRight = 93,
 			kEscape = 256, kEnter = 257, kTab = 258, kBackspace = 259, kDelete = 261,
 			kRight = 262, kLeft = 263, kDown = 264, kUp = 265, kPageUp = 266, kPageDown = 267, kHome = 268, kEnd = 269,
-			kKeypadEnter = 335, kF8 = 297, kMinus = 45, kZero = 48, kEqual = 61, kKeypadSubtract = 333, kKeypadAdd = 334,
+			kKeypadEnter = 335, kF2 = 291, kF8 = 297, kF12 = 301, kPeriod = 46, kMinus = 45, kZero = 48, kEqual = 61, kKeypadSubtract = 333, kKeypadAdd = 334,
 		};
 		constexpr float kDefaultFontSize = 13.0f; // Ctrl+0
 		constexpr int kShift = 1;
 		constexpr int kCtrl = 2;
+		constexpr int kAlt = 4;
+		constexpr int kMouseBack = 3;
+		constexpr int kMouseForward = 4;
 
 		constexpr float kMinimapWidth = 84.0f;
 		constexpr float kMinimapLine = 2.0f;   // px per line
@@ -77,6 +80,8 @@ namespace wisp {
 
 	void CodeEditor::SetText(const std::string& text)
 	{
+		m_Overlays.clear();
+		m_Peek.Visible = false;
 		m_Model->SetText(text);
 		m_ScrollX = m_ScrollY = 0.0f;
 		m_TokensValidTo = -1;
@@ -86,6 +91,8 @@ namespace wisp {
 
 	void CodeEditor::SetModel(std::shared_ptr<code::EditorModel> model, glm::vec2 scroll)
 	{
+		m_Overlays.clear();
+		m_Peek.Visible = false;
 		m_Model = model ? std::move(model) : std::make_shared<code::EditorModel>();
 		m_ScrollX = scroll.x;
 		m_ScrollY = scroll.y;
@@ -241,8 +248,7 @@ namespace wisp {
 		const int visible = (int)std::floor((absolute.y - layout.Origin.y + m_ScrollY) / layout.LineHeight);
 		const int line = m_Model->LineForVisible(std::max(0, visible));
 		const float x = absolute.x - layout.TextLeft + m_ScrollX;
-		const int column = std::max(0, (int)std::round(x / layout.CharWidth));
-		return { line, code::EditorModel::ByteForVisualColumn(m_Model->Doc().Line(line), column) };
+		return { line, ColumnAtDisplay(line, std::max(0.0f, x / layout.CharWidth), true) };
 	}
 
 	void CodeEditor::ClampScroll() const
@@ -262,7 +268,7 @@ namespace wisp {
 			m_ScrollY = y;
 		else if (y > m_ScrollY + viewH)
 			m_ScrollY = y - viewH;
-		const float x = (float)code::EditorModel::VisualColumn(m_Model->Doc().Line(pos.Line), pos.Col) * layout.CharWidth;
+		const float x = (float)DisplayColumn(pos.Line, pos.Col) * layout.CharWidth;
 		const float viewW = std::max(layout.CharWidth * 4.0f, layout.TextRight - layout.TextLeft - layout.CharWidth * 2.0f);
 		if (x < m_ScrollX)
 			m_ScrollX = std::max(0.0f, x - layout.CharWidth * 4.0f);
@@ -314,7 +320,7 @@ namespace wisp {
 		const bool brackets = focused && m_Model->MatchingBracket(bracketOpen, bracketClose);
 
 		auto xOf = [&](int line, int col) {
-			return L.TextLeft - m_ScrollX + (float)code::EditorModel::VisualColumn(doc.Line(line), col) * L.CharWidth;
+			return L.TextLeft - m_ScrollX + (float)DisplayColumn(line, col) * L.CharWidth;
 		};
 		std::string occurrence;
 		const bool hasOccurrence = focused && OccurrenceWord(occurrence);
@@ -575,14 +581,33 @@ namespace wisp {
 		// The border focus line.
 		if (focused)
 			dl.AddBox(layerId + 5, { L.Origin.x, L.Origin.y }, { 2.0f, L.Size.y }, tokens::WithAlpha(tokens::Accent, 0.7f), clip);
-		PaintPopups(dl, layerId + 7, clip);
-		return layerId + 17;
+		PaintPeek(dl, layerId + 7, clip);
+		PaintPopups(dl, layerId + 10, clip);
+		return layerId + 20;
 	}
 
 	// ---- input --------------------------------------------------------------
 
 	Reply CodeEditor::OnMouseButtonDown(const glm::vec2& pos, int button)
 	{
+		// The mouse's back / forward buttons step the host's history.
+		if ((button == kMouseBack || button == kMouseForward) && m_OnCommand)
+		{
+			m_OnCommand(button == kMouseBack ? Command::Back : Command::Forward, m_Model->PrimaryCaret().Pos);
+			return Reply::Handled_().SetFocus();
+		}
+		if (m_Peek.Visible)
+		{
+			const glm::vec4 r = m_PeekRect;
+			const bool inside = pos.x >= r.x && pos.x < r.x + r.z && pos.y >= r.y && pos.y < r.y + r.w;
+			m_Peek.Visible = false;
+			if (inside)
+			{
+				if (button == 0 && m_OnPeekOpen)
+					m_OnPeekOpen();
+				return Reply::Handled_().SetFocus();
+			}
+		}
 		if (m_Completion.Open)
 		{
 			const glm::vec4 r = m_CompletionRect;
@@ -630,6 +655,7 @@ namespace wisp {
 		const int mods = UIApplication::Get().GetHeldModifiers();
 		const bool shift = (mods & kShift) != 0;
 		const bool ctrl = (mods & kCtrl) != 0;
+		const bool alt = (mods & kAlt) != 0;
 		m_LastActivity = UIApplication::GetAnimTime();
 
 		if (pos.x >= L.MinimapLeft)
@@ -662,12 +688,19 @@ namespace wisp {
 			m_Model->SelectWordAt(at);
 		else if (m_ClickCount == 3)
 			m_Model->SelectLine(at.Line, false);
-		else if (ctrl)
+		else if (alt)
 			m_Model->AddCaret(at);
+		else if (ctrl && m_OnCommand)
+		{
+			// Ctrl+click goes to the definition.
+			m_Model->SetCaret(at, false);
+			m_OnCommand(Command::Definition, at);
+			return Reply::Handled_().SetFocus();
+		}
 		else
 			m_Model->SetCaret(at, shift);
 		m_DragAnchor = m_Model->PrimaryCaret().Anchor;
-		m_Drag = m_ClickCount == 1 && !ctrl ? Drag::Text : Drag::None;
+		m_Drag = m_ClickCount == 1 && !alt ? Drag::Text : Drag::None;
 		return Reply::Handled_().SetFocus().CaptureMouse();
 	}
 
@@ -733,6 +766,35 @@ namespace wisp {
 		using code::CaretMove;
 		if (m_OnKey && m_OnKey(key, mods))
 			return Reply::Handled_();
+		const bool alt = (mods & kAlt) != 0;
+		if (m_Peek.Visible && (key == kEscape || key == kEnter || key == kKeypadEnter))
+		{
+			m_Peek.Visible = false;
+			if (key != kEscape && m_OnPeekOpen)
+				m_OnPeekOpen();
+			return Reply::Handled_();
+		}
+		// The host's navigation and refactoring commands.
+		if (m_OnCommand)
+		{
+			const code::TextPos caret = m_Model->PrimaryCaret().Pos;
+			std::optional<Command> command;
+			if (key == kF12)
+				command = shift ? Command::References : alt ? Command::Peek : Command::Definition;
+			else if (key == kF2 && !ctrl && !alt)
+				command = Command::Rename;
+			else if (key == kPeriod && ctrl)
+				command = Command::QuickFix;
+			else if (alt && !ctrl && (key == kLeft || key == kRight))
+				command = key == kLeft ? Command::Back : Command::Forward;
+			if (command)
+			{
+				m_Completion.Open = false;
+				m_Signature.Visible = false;
+				m_OnCommand(*command, caret);
+				return Reply::Handled_();
+			}
+		}
 		if (key == kF8)
 		{
 			GoToMarker(shift);
@@ -944,6 +1006,7 @@ namespace wisp {
 	{
 		if (codepoint < 32 || codepoint == 127)
 			return Reply::Unhandled();
+		m_Peek.Visible = false;
 		const code::TextPos before = m_Model->PrimaryCaret().Pos;
 		const std::string& line = m_Model->Doc().Line(before.Line);
 		const bool wordStart = before.Col == 0 || !IsWordChar((unsigned char)line[(size_t)before.Col - 1]);
@@ -1134,14 +1197,14 @@ namespace wisp {
 		{
 			at = PosAt(mouse);
 			const std::string& line = m_Model->Doc().Line(at.Line);
-			const float lineEnd = L.TextLeft - m_ScrollX + (float)code::EditorModel::VisualColumn(line, (int)line.size()) * L.CharWidth;
+			const float lineEnd = L.TextLeft - m_ScrollX + (float)DisplayColumn(at.Line, (int)line.size()) * L.CharWidth;
 			if (mouse.x > lineEnd + L.CharWidth * 0.5f)
 				at = { -1, -1 };
 			else
 			{
 				// The column under the pointer (PosAt rounds to the nearest gap).
 				const float x = mouse.x - L.TextLeft + m_ScrollX;
-				at.Col = code::EditorModel::ByteForVisualColumn(line, std::max(0, (int)std::floor(x / L.CharWidth)));
+				at.Col = ColumnAtDisplay(at.Line, std::max(0.0f, x / L.CharWidth), false);
 				wordStart = at.Col;
 				while (wordStart > 0 && IsWordChar((unsigned char)line[(size_t)wordStart - 1]))
 					wordStart--;
@@ -1210,10 +1273,31 @@ namespace wisp {
 		const std::vector<code::Token>& lineTokens = m_Tokens[(size_t)line];
 		static constexpr glm::vec4 kBrackets[3] = { tokens::SyntaxBracket1, tokens::SyntaxBracket2, tokens::SyntaxBracket3 };
 		int depth = line < (int)m_BracketDepth.size() ? m_BracketDepth[(size_t)line] : 0;
+		const LineOverlay* overlay = OverlayFor(line);
+		size_t spanIndex = 0, hintIndex = 0;
+		// A hint is a chip of virtual columns before its column.
+		auto paintHints = [&](int col, int& visual) {
+			if (!overlay || !m_ShowInlays)
+				return;
+			while (hintIndex < overlay->Hints.size() && overlay->Hints[hintIndex].Col <= col)
+			{
+				const InlayHint& hint = overlay->Hints[hintIndex++];
+				if (hint.Col != col)
+					continue;
+				const int width = HintWidth(hint);
+				const float x = L.TextLeft - m_ScrollX + (float)visual * L.CharWidth;
+				const float r[4] = { 3.0f, 3.0f, 3.0f, 3.0f };
+				dl.AddRoundedBox(layer - 1, { x + L.CharWidth * 0.25f, y + 2.0f }, { (float)(width - 1) * L.CharWidth + L.CharWidth * 0.5f, L.LineHeight - 4.0f },
+					tokens::CodeInlayChip, r, 0.0f, tokens::CodeInlayChip, clip);
+				PaintRun(dl, layer, x + L.CharWidth * 0.5f, std::round(y + L.Ascent), hint.Text, tokens::CodeInlayText, clip);
+				visual += width;
+			}
+		};
 		size_t tokenIndex = 0;
 		int visual = 0;
 		for (int col = 0; col < (int)text.size();)
 		{
+			paintHints(col, visual);
 			int length = 1;
 			const uint32_t cp = DecodeAt(text, col, length);
 			const int width = cp == '\t' ? code::EditorModel::kTabWidth - visual % code::EditorModel::kTabWidth : 1;
@@ -1231,12 +1315,208 @@ namespace wisp {
 				else if (cp == ')' || cp == ']' || cp == '}')
 					tint = kBrackets[(depth = std::max(0, depth - 1)) % 3];
 			}
+			// The host's semantic colour on an identifier.
+			if (overlay && (kind == code::TokenKind::Plain || kind == code::TokenKind::Global || kind == code::TokenKind::Function))
+			{
+				while (spanIndex < overlay->Spans.size() && overlay->Spans[spanIndex].Col + overlay->Spans[spanIndex].Length <= col)
+					spanIndex++;
+				if (spanIndex < overlay->Spans.size() && overlay->Spans[spanIndex].Col <= col)
+					tint = overlay->Spans[spanIndex].Colour;
+			}
 			if (cp != '\t' && cp != ' ' && x + L.CharWidth >= L.TextLeft && x <= L.TextRight)
 				if (const GlyphInfo* glyph = m_FontCache ? m_FontCache->GetGlyph(m_Font, cp, m_FontSize) : nullptr)
 					AddGlyph(dl, layer, { std::round(x), std::round(y + L.Ascent) }, *glyph, tint, clip);
 			visual += width;
 			col += length;
 		}
+		paintHints((int)text.size(), visual);
+	}
+
+	// ---- Overlays and peek ------------------------------------------------
+
+	void CodeEditor::SetOverlays(std::vector<SemanticSpan> spans, std::vector<InlayHint> hints)
+	{
+		const code::TextDocument& doc = m_Model->Doc();
+		m_Overlays.assign((size_t)doc.LineCount(), {});
+		for (int line = 0; line < doc.LineCount(); line++)
+			m_Overlays[(size_t)line].Text = doc.Line(line);
+		for (SemanticSpan& span : spans)
+			if (span.Line >= 0 && span.Line < doc.LineCount())
+				m_Overlays[(size_t)span.Line].Spans.push_back(span);
+		for (InlayHint& hint : hints)
+			if (hint.Line >= 0 && hint.Line < doc.LineCount())
+				m_Overlays[(size_t)hint.Line].Hints.push_back(std::move(hint));
+		for (LineOverlay& overlay : m_Overlays)
+		{
+			std::sort(overlay.Spans.begin(), overlay.Spans.end(), [](const SemanticSpan& a, const SemanticSpan& b) { return a.Col < b.Col; });
+			std::stable_sort(overlay.Hints.begin(), overlay.Hints.end(), [](const InlayHint& a, const InlayHint& b) { return a.Col < b.Col; });
+		}
+	}
+
+	const CodeEditor::LineOverlay* CodeEditor::OverlayFor(int line) const
+	{
+		if (m_Overlays.empty() || line < 0 || line >= m_Model->Doc().LineCount())
+			return nullptr;
+		const std::string& text = m_Model->Doc().Line(line);
+		// Its own line, else (lines were added or removed above) the nearest
+		// stored line with the same text.
+		for (int d = 0; d <= 3; d++)
+			for (int sign : { 1, -1 })
+			{
+				const int at = line + d * sign;
+				if (at >= 0 && at < (int)m_Overlays.size() && m_Overlays[(size_t)at].Text == text)
+				{
+					const LineOverlay& overlay = m_Overlays[(size_t)at];
+					return overlay.Spans.empty() && overlay.Hints.empty() ? nullptr : &overlay;
+				}
+				if (d == 0)
+					break;
+			}
+		return nullptr;
+	}
+
+	int CodeEditor::HintWidth(const InlayHint& hint)
+	{
+		int glyphs = 0;
+		for (unsigned char c : hint.Text)
+			if ((c & 0xC0u) != 0x80u)
+				glyphs++;
+		return glyphs + 1;
+	}
+
+	int CodeEditor::HintShift(int line, int col, bool inclusive) const
+	{
+		if (!m_ShowInlays)
+			return 0;
+		const LineOverlay* overlay = OverlayFor(line);
+		if (!overlay)
+			return 0;
+		int shift = 0;
+		for (const InlayHint& hint : overlay->Hints)
+			if (inclusive ? hint.Col <= col : hint.Col < col)
+				shift += HintWidth(hint);
+		return shift;
+	}
+
+	int CodeEditor::DisplayColumn(int line, int col) const
+	{
+		return code::EditorModel::VisualColumn(m_Model->Doc().Line(line), col) + HintShift(line, col, false);
+	}
+
+	glm::vec2 CodeEditor::ScreenPosOf(code::TextPos pos) const
+	{
+		const Layout& L = m_Layout;
+		const int line = std::clamp(pos.Line, 0, std::max(0, m_Model->Doc().LineCount() - 1));
+		return { L.TextLeft - m_ScrollX + (float)DisplayColumn(line, pos.Col) * L.CharWidth,
+			L.Origin.y + (float)m_Model->VisibleForLine(line) * L.LineHeight - m_ScrollY };
+	}
+
+	int CodeEditor::ColumnAtDisplay(int line, float display, bool round) const
+	{
+		const std::string& text = m_Model->Doc().Line(line);
+		const LineOverlay* overlay = m_ShowInlays ? OverlayFor(line) : nullptr;
+		int shift = 0;
+		if (overlay)
+			for (const InlayHint& hint : overlay->Hints)
+			{
+				const float start = (float)(code::EditorModel::VisualColumn(text, hint.Col) + shift);
+				if (display <= start)
+					break;
+				const int width = HintWidth(hint);
+				if (display < start + (float)width)
+					return hint.Col; // on the hint: its column
+				shift += width;
+			}
+		const float visual = std::max(0.0f, display - (float)shift);
+		return code::EditorModel::ByteForVisualColumn(text, round ? (int)std::round(visual) : (int)std::floor(visual));
+	}
+
+	void CodeEditor::ShowPeek(code::TextPos anchor, std::string title, std::vector<std::string> lines, int firstLine, int focusLine,
+		std::shared_ptr<const code::ITokenizer> tokenizer)
+	{
+		m_Peek.Visible = true;
+		m_Peek.Anchor = anchor;
+		m_Peek.Title = std::move(title);
+		m_Peek.Lines = std::move(lines);
+		m_Peek.FirstLine = firstLine;
+		m_Peek.FocusLine = focusLine;
+		m_Peek.Tokens.clear();
+		uint32_t state = 0;
+		for (const std::string& line : m_Peek.Lines)
+		{
+			std::vector<code::Token> tokens;
+			if (tokenizer)
+				state = tokenizer->TokenizeLine(line, state, tokens);
+			m_Peek.Tokens.push_back(std::move(tokens));
+		}
+		m_Completion.Open = false;
+		m_Signature.Visible = false;
+	}
+
+	void CodeEditor::PaintPeek(DrawList& dl, int layer, int clip) const
+	{
+		m_PeekRect = glm::vec4(0.0f);
+		if (!m_Peek.Visible || m_Peek.Lines.empty())
+			return;
+		const Layout& L = m_Layout;
+		const float lineH = L.LineHeight;
+		const int digits = (int)std::to_string(m_Peek.FirstLine + (int)m_Peek.Lines.size()).size();
+		const float gutter = (float)(digits + 2) * L.CharWidth;
+		size_t longest = 0;
+		for (const std::string& line : m_Peek.Lines)
+			longest = std::max(longest, (size_t)code::EditorModel::VisualColumn(line, (int)line.size()));
+		const float x = L.TextLeft + L.CharWidth * 2.0f;
+		const float maxW = std::max(L.CharWidth * 20.0f, L.TextRight - x - L.CharWidth * 2.0f);
+		const float w = std::min(maxW, gutter + (float)std::max<size_t>(longest, 40) * L.CharWidth + 16.0f);
+		const float h = lineH * ((float)m_Peek.Lines.size() + 1.0f) + 10.0f;
+		const float anchorTop = L.Origin.y + (float)m_Model->VisibleForLine(m_Peek.Anchor.Line) * lineH - m_ScrollY;
+		float y = anchorTop + lineH + 2.0f;
+		if (y + h > L.Origin.y + L.Size.y && anchorTop - h - 2.0f >= L.Origin.y)
+			y = anchorTop - h - 2.0f;
+		PaintCard(dl, layer, { x, y }, { w, h }, clip);
+		const int inner = dl.PushClip({ x + 1.0f, y + 1.0f, w - 2.0f, h - 2.0f }, clip);
+		// The title row: the file and line, and how to open it.
+		dl.AddBox(layer + 1, { x + 1.0f, y + 1.0f }, { w - 2.0f, lineH + 3.0f }, tokens::Raised, inner);
+		// The title gives way to the key hint, the hint to a narrow card.
+		const std::string hint = "Enter: open   Esc: close";
+		const int columns = (int)((w - 16.0f) / L.CharWidth);
+		const bool showHint = columns >= (int)hint.size() + 16;
+		const int titleColumns = showHint ? columns - (int)hint.size() - 2 : columns;
+		std::string title = m_Peek.Title;
+		if ((int)title.size() > titleColumns && titleColumns > 1)
+			title = title.substr(0, (size_t)titleColumns - 1) + "\xE2\x80\xA6";
+		PaintRun(dl, layer + 2, x + 8.0f, std::round(y + 2.0f + L.Ascent), title, tokens::TextSecondary, inner);
+		if (showHint)
+			PaintRun(dl, layer + 2, x + w - 8.0f - (float)hint.size() * L.CharWidth, std::round(y + 2.0f + L.Ascent), hint, tokens::TextMuted, inner);
+		for (size_t i = 0; i < m_Peek.Lines.size(); i++)
+		{
+			const float rowY = y + 6.0f + lineH * (float)(i + 1);
+			const int fileLine = m_Peek.FirstLine + (int)i;
+			if (fileLine == m_Peek.FocusLine)
+				dl.AddBox(layer + 1, { x + 1.0f, rowY }, { w - 2.0f, lineH }, tokens::CodePeekFocus, inner);
+			const std::string number = std::to_string(fileLine + 1);
+			PaintRun(dl, layer + 2, x + gutter - (float)(number.size() + 1) * L.CharWidth, std::round(rowY + L.Ascent), number,
+				fileLine == m_Peek.FocusLine ? tokens::CodeLineNumberActive : tokens::CodeLineNumber, inner);
+			const std::string& text = m_Peek.Lines[i];
+			const std::vector<code::Token>& lineTokens = m_Peek.Tokens[i];
+			size_t tokenIndex = 0;
+			int visual = 0;
+			for (int col = 0; col < (int)text.size();)
+			{
+				int length = 1;
+				const uint32_t cp = DecodeAt(text, col, length);
+				const int width = cp == '\t' ? code::EditorModel::kTabWidth - visual % code::EditorModel::kTabWidth : 1;
+				while (tokenIndex < lineTokens.size() && lineTokens[tokenIndex].Start + lineTokens[tokenIndex].Length <= col)
+					tokenIndex++;
+				const code::TokenKind kind = tokenIndex < lineTokens.size() && lineTokens[tokenIndex].Start <= col ? lineTokens[tokenIndex].Kind : code::TokenKind::Plain;
+				if (cp != '\t' && cp != ' ')
+					if (const GlyphInfo* glyph = m_FontCache ? m_FontCache->GetGlyph(m_Font, cp, m_FontSize) : nullptr)
+						AddGlyph(dl, layer + 2, { std::round(x + gutter + (float)visual * L.CharWidth), std::round(rowY + L.Ascent) }, *glyph, ColourOf(kind), inner);
+				visual += width;
+				col += length;
+			}
+		}
+		m_PeekRect = { x, y, w, h };
 	}
 
 	void CodeEditor::PaintLineNumber(DrawList& dl, int layer, int line, float y, const glm::vec4& tint, int clip) const
@@ -1347,7 +1627,7 @@ namespace wisp {
 		const float charW = L.CharWidth;
 		auto lineTop = [&](int line) { return L.Origin.y + (float)m_Model->VisibleForLine(line) * lineH - m_ScrollY; };
 		auto xOf = [&](int line, int col) {
-			return L.TextLeft - m_ScrollX + (float)code::EditorModel::VisualColumn(m_Model->Doc().Line(line), col) * charW;
+			return L.TextLeft - m_ScrollX + (float)DisplayColumn(line, col) * charW;
 		};
 		auto clampX = [&](float x, float w) {
 			return std::clamp(x, L.Origin.x + 4.0f, std::max(L.Origin.x + 4.0f, L.Origin.x + L.Size.x - w - 6.0f));

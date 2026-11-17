@@ -106,6 +106,10 @@ namespace wisp::code {
 		// `text` in one step, leaving one caret `caretOffset` bytes into the
 		// inserted text (-1 = its end).
 		void ReplaceRange(const TextRange& range, std::string_view text, int caretOffset = -1);
+		// A rename's or a quick fix's edits - every range (non-overlapping,
+		// in the current text) replaced as one undo step; the carets stay
+		// where they are (clamped).
+		void ApplyEdits(std::vector<std::pair<TextRange, std::string>> edits);
 
 		// ---- find / replace / go to ------------------------------------
 		// wholeWord: no word character may touch the match.
