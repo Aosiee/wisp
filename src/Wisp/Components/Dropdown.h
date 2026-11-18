@@ -193,8 +193,9 @@ namespace wisp {
 		}
 		else
 		{
-			list = std::make_unique<VerticalBox>(BoxOrientation::Vertical);
-			VerticalBox* flatList = static_cast<VerticalBox*>(list.get());
+			// The typeable list (every flat dropdown filters as you type,
+			// like the popup menus).
+			std::vector<PopupMenuEntry> entries;
 			for (int i = 0; i < (int)m_Options.size(); i++)
 			{
 				int idx = i;
@@ -202,8 +203,7 @@ namespace wisp {
 				// legacy flat sections) - the items below read indented.
 				if (IsHeaderOption(m_Options[i]))
 				{
-					flatList->AddChild(std::make_unique<PopupMenuRow>(m_FontCache, m_Font, m_FontSize,
-						PopupMenuEntry::MakeHeader(HeaderLabel(m_Options[i]))));
+					entries.push_back(PopupMenuEntry::MakeHeader(HeaderLabel(m_Options[i])));
 					continue;
 				}
 				PopupMenuEntry e;
@@ -214,8 +214,9 @@ namespace wisp {
 					SetSelectedIndex(idx);
 					m_OnChanged(idx, m_Options[idx]);
 				};
-				flatList->AddChild(std::make_unique<PopupMenuRow>(m_FontCache, m_Font, m_FontSize, std::move(e)));
+				entries.push_back(std::move(e));
 			}
+			list = std::make_unique<FilterablePopupList>(m_FontCache, m_Font, m_FontSize, std::move(entries));
 		}
 
 		auto sized = std::make_unique<PopupFrame>(std::move(list), std::max(m_CachedWidth - popupmenu::kPad * 2.0f, 140.0f));

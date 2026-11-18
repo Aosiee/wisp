@@ -119,7 +119,8 @@ private:
 
 	bool RasterizeGlyph(FontHandle font, uint32_t codepoint, float pixelSize, GlyphInfo& outInfo);
 	bool PackRect(uint32_t w, uint32_t h, uint32_t& outX, uint32_t& outY);
-	void GrowAtlas();
+	bool GrowAtlas(); // false = already at the maximum size
+	void ResetAtlasPacking();
 
 	// Internal stb_truetype state is stored per face via the TtfData bytes
 

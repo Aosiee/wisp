@@ -188,7 +188,11 @@ bool FontCache::RasterizeGlyph(FontHandle font, uint32_t codepoint, float pixelS
 		uint32_t atlasX, atlasY;
 		if (!PackRect((uint32_t)bw, (uint32_t)bh, atlasX, atlasY))
 		{
-			GrowAtlas();
+			// A full atlas at its maximum size is recycled: every glyph
+			// re-rasterizes on demand (the Script Editor's zoom bakes each
+			// size anew).
+			if (!GrowAtlas())
+				ResetAtlasPacking();
 			if (!PackRect((uint32_t)bw, (uint32_t)bh, atlasX, atlasY))
 				return false;
 		}
@@ -230,9 +234,13 @@ bool FontCache::RasterizeGlyph(FontHandle font, uint32_t codepoint, float pixelS
 bool FontCache::PackRect(uint32_t w, uint32_t h, uint32_t& outX, uint32_t& outY)
 {
 	const uint32_t padding = 1;
+	if (w + padding * 2 > m_AtlasWidth || h + padding * 2 > m_AtlasHeight)
+		return false;
 
-	// Try to fit in current shelf
-	if (m_ShelfX + w + padding * 2 <= m_AtlasWidth)
+	// Try to fit in current shelf - it must fit DOWN too: a glyph taller than
+	// the shelf so far, on a shelf near the bottom, was written past the atlas
+	// (the Script Editor zoom crash).
+	if (m_ShelfX + w + padding * 2 <= m_AtlasWidth && m_ShelfY + h + padding * 2 <= m_AtlasHeight)
 	{
 		outX = m_ShelfX + padding;
 		outY = m_ShelfY + padding;
@@ -257,19 +265,22 @@ bool FontCache::PackRect(uint32_t w, uint32_t h, uint32_t& outX, uint32_t& outY)
 	return true;
 }
 
-void FontCache::GrowAtlas()
+bool FontCache::GrowAtlas()
 {
 	uint32_t oldW = m_AtlasWidth;
 	uint32_t oldH = m_AtlasHeight;
 
-	// Double the axis that makes it more square
-	if (m_AtlasWidth <= m_AtlasHeight)
-		m_AtlasWidth = std::min(m_AtlasWidth * 2, 4096u);
+	// Double the axis that makes it more square (the other once that one
+	// is maxed).
+	constexpr uint32_t kMaxAtlas = 4096u;
+	if (m_AtlasWidth <= m_AtlasHeight && m_AtlasWidth < kMaxAtlas)
+		m_AtlasWidth = std::min(m_AtlasWidth * 2, kMaxAtlas);
+	else if (m_AtlasHeight < kMaxAtlas)
+		m_AtlasHeight = std::min(m_AtlasHeight * 2, kMaxAtlas);
+	else if (m_AtlasWidth < kMaxAtlas)
+		m_AtlasWidth = std::min(m_AtlasWidth * 2, kMaxAtlas);
 	else
-		m_AtlasHeight = std::min(m_AtlasHeight * 2, 4096u);
-
-	if (m_AtlasWidth == oldW && m_AtlasHeight == oldH)
-		return; // maxed out
+		return false; // maxed out
 
 	std::vector<uint8_t> newData(m_AtlasWidth * m_AtlasHeight * 4, 0);
 	for (uint32_t row = 0; row < oldH; ++row)
@@ -287,6 +298,16 @@ void FontCache::GrowAtlas()
 
 	// Clear glyph cache — all atlas UVs are invalid after resize
 	m_GlyphCache.clear();
+	return true;
+}
+
+void FontCache::ResetAtlasPacking()
+{
+	m_ShelfX = 0;
+	m_ShelfY = 0;
+	m_ShelfMaxHeight = 0;
+	m_GlyphCache.clear();
+	m_AtlasDirty = true;
 }
 
 float FontCache::GetKerning(FontHandle font, uint32_t left, uint32_t right, float pixelSize)

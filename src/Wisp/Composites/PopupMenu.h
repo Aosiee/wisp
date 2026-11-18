@@ -16,6 +16,10 @@
 #include "Wisp/Components/BoxPanel.h"
 
 #include <algorithm>
+#include <cctype>
+#include <memory>
+#include <string>
+#include <vector>
 #include <cmath>
 #include <functional>
 #include <memory>
@@ -121,7 +125,7 @@ public:
 			return layerId + 1;
 
 		const bool interactive = !m_Entry.Header && m_Entry.Enabled;
-		const bool hot = interactive && m_Hovered;
+		const bool hot = interactive && (m_Hovered || m_Highlighted);
 		if (hot)
 		{
 			const float r[4] = { tokens::RadiusSmall, tokens::RadiusSmall, tokens::RadiusSmall, tokens::RadiusSmall };
@@ -164,6 +168,21 @@ public:
 		return layerId + 2;
 	}
 
+	// The keyboard's row (FilterablePopupList).
+	void SetHighlighted(bool on) { m_Highlighted = on; }
+	bool IsSelectable() const { return !m_Entry.Separator && !m_Entry.Header && m_Entry.Enabled; }
+	const PopupMenuEntry& GetEntry() const { return m_Entry; }
+	// The click's effect, from the keyboard (Enter).
+	void Activate()
+	{
+		if (!IsSelectable())
+			return;
+		if (m_Entry.Action)
+			m_Entry.Action();
+		if (!m_Entry.KeepOpen && UIApplication::IsValid())
+			UIApplication::Get().RequestDismissPopups();
+	}
+
 	Reply OnMouseEnter() override { m_Hovered = true; return Reply::Unhandled(); }
 	Reply OnMouseLeave() override { m_Hovered = false; m_Pressed = false; return Reply::Unhandled(); }
 
@@ -204,6 +223,7 @@ private:
 	PopupMenuEntry m_Entry;
 	bool m_Hovered = false;
 	bool m_Pressed = false;
+	bool m_Highlighted = false;
 };
 
 // The popup chrome: a soft shadow, a rounded Popup-coloured card with a
@@ -262,14 +282,266 @@ private:
 	float m_Padding = popupmenu::kPad;
 };
 
+// The rows of every popup menu and flat dropdown list, typeable. It takes
+// the keyboard focus once shown; typed text filters the rows (a
+// case-insensitive substring of the label; the headers and separators hide
+// while filtering), Backspace edits, Up / Down move the highlighted row,
+// Enter runs it, Escape clears the filter and then closes the popup. The
+// filter shows in a field row at the top - always for a long list, once
+// typing starts for a short one. The width stays the full list's, so
+// filtering never reflows the popup sideways.
+class FilterablePopupList : public Widget
+{
+public:
+	WISP_WIDGET_TYPE(FilterablePopupList)
+
+	static constexpr size_t kAlwaysShowFieldAt = 8; // selectable rows
+	static constexpr float kFieldHeight = 30.0f;
+
+	FilterablePopupList(FontCache* fc, FontHandle font, float fontSize, std::vector<PopupMenuEntry> entries)
+		: m_FontCache(fc), m_Font(font), m_FontSize(fontSize), m_Entries(std::move(entries))
+	{
+		SetSupportsFocus(true);
+		size_t selectable = 0;
+		for (const PopupMenuEntry& e : m_Entries)
+		{
+			if (!e.Separator && !e.Header && e.Enabled)
+				selectable++;
+			m_Width = std::max(m_Width, PopupMenuRow(fc, font, fontSize, e).ComputeDesiredSize().x);
+		}
+		m_AlwaysShowField = selectable >= kAlwaysShowFieldAt;
+		Rebuild();
+	}
+
+	const std::string& GetFilter() const { return m_Filter; }
+
+	glm::vec2 ComputeDesiredSize() const override
+	{
+		float h = FieldHeight();
+		for (const auto& row : m_Rows)
+		{
+			const glm::vec2 d = row->ComputeDesiredSize();
+			row->SetCachedDesiredSize(d);
+			h += d.y;
+		}
+		if (m_Rows.empty())
+			h += popupmenu::kRowHeight;
+		return { std::max(m_Width, 180.0f), h };
+	}
+
+	void ArrangeChildren(const Geometry& geom, ArrangedChildren& out) const override
+	{
+		float y = FieldHeight();
+		for (const auto& row : m_Rows)
+		{
+			const float h = row->GetCachedDesiredSize().y > 0.0f ? row->GetCachedDesiredSize().y : row->ComputeDesiredSize().y;
+			out.Add(row.get(), geom.MakeChild({ 0.0f, y }, { geom.LocalSize.x, h }));
+			y += h;
+		}
+	}
+
+	int OnPaint(const PaintArgs& args, const Geometry& geom, DrawList& dl, int layerId, const WidgetStyleContext& style) const override
+	{
+		// The focus is taken outside the paint (a tick after the popup shows).
+		if (!m_FocusRequested)
+		{
+			m_FocusRequested = true;
+			const_cast<FilterablePopupList*>(this)->RequestAnimationTick();
+		}
+		const glm::vec2 pos = geom.LocalToAbsolute({ 0, 0 });
+		const int clip = args.InheritedClipIndex;
+		int next = layerId + 1;
+		if (FieldHeight() > 0.0f)
+		{
+			const float r[4] = { tokens::RadiusSmall, tokens::RadiusSmall, tokens::RadiusSmall, tokens::RadiusSmall };
+			const glm::vec2 fieldPos = { pos.x + 2.0f, pos.y + 2.0f };
+			const glm::vec2 fieldSize = { geom.LocalSize.x - 4.0f, kFieldHeight - 6.0f };
+			dl.AddRoundedBox(layerId, fieldPos, fieldSize, tokens::Field, r, 1.0f, m_Filter.empty() ? tokens::Border : tokens::Accent, clip);
+			const FontHandle iconFont = UIApplication::FontOr(FontRole::Icons, m_Font);
+			const FontMetrics im = m_FontCache->GetMetrics(iconFont, 12.0f);
+			popupmenu::PaintRun(dl, m_FontCache, iconFont, 12.0f,
+				{ fieldPos.x + 8.0f, std::round(fieldPos.y + (fieldSize.y - im.LineHeight) * 0.5f + im.Ascent) }, icons::Search, tokens::TextMuted, layerId + 1, clip);
+			const FontMetrics fm = m_FontCache->GetMetrics(m_Font, tokens::FontSmall);
+			const float baseline = std::round(fieldPos.y + (fieldSize.y - fm.LineHeight) * 0.5f + fm.Ascent);
+			const float textX = fieldPos.x + 26.0f;
+			if (m_Filter.empty())
+				popupmenu::PaintRun(dl, m_FontCache, m_Font, tokens::FontSmall, { textX, baseline }, "Type to filter", tokens::TextMuted, layerId + 1, clip);
+			else
+			{
+				const float w = popupmenu::PaintRun(dl, m_FontCache, m_Font, tokens::FontSmall, { textX, baseline }, m_Filter, tokens::TextPrimary, layerId + 1, clip);
+				dl.AddBox(layerId + 1, { textX + w + 1.0f, fieldPos.y + 5.0f }, { 1.0f, fieldSize.y - 10.0f }, tokens::TextPrimary, clip);
+			}
+			next = layerId + 2;
+		}
+		if (m_Rows.empty())
+		{
+			const FontMetrics fm = m_FontCache->GetMetrics(m_Font, m_FontSize);
+			const float y = pos.y + FieldHeight();
+			popupmenu::PaintRun(dl, m_FontCache, m_Font, m_FontSize,
+				{ pos.x + popupmenu::kLeadColumn, std::round(y + (popupmenu::kRowHeight - fm.LineHeight) * 0.5f + fm.Ascent) },
+				"No matches", tokens::TextMuted, next, clip);
+			return next + 1;
+		}
+		ArrangedChildren arranged;
+		ArrangeChildren(geom, arranged);
+		for (auto& c : arranged)
+			next = c.WidgetPtr->OnPaint(args, c.Geom, dl, next, style);
+		return next;
+	}
+
+	void ForEachChild(std::function<void(Widget*)> fn) override
+	{
+		for (auto& row : m_Rows)
+			fn(row.get());
+	}
+
+	void TickAnimation(float) override
+	{
+		if (UIApplication::IsValid())
+			UIApplication::Get().SetFocus(this);
+	}
+
+	Reply OnTextInput(uint32_t codepoint) override
+	{
+		if (codepoint < 32 || codepoint == 127)
+			return Reply::Handled_();
+		AppendUtf8(m_Filter, codepoint);
+		m_Highlight = 0;
+		Rebuild();
+		return Reply::Handled_();
+	}
+
+	Reply OnKeyDown(int key, int) override
+	{
+		switch (key)
+		{
+		case 256: // Escape: the filter first, then the popup
+			if (!m_Filter.empty())
+			{
+				m_Filter.clear();
+				m_Highlight = 0;
+				Rebuild();
+			}
+			else if (UIApplication::IsValid())
+				UIApplication::Get().RequestDismissPopups();
+			return Reply::Handled_();
+		case 259: // Backspace (a whole UTF-8 codepoint)
+			if (!m_Filter.empty())
+			{
+				size_t cut = m_Filter.size() - 1;
+				while (cut > 0 && ((uint8_t)m_Filter[cut] & 0xC0) == 0x80)
+					cut--;
+				m_Filter.resize(cut);
+				m_Highlight = 0;
+				Rebuild();
+			}
+			return Reply::Handled_();
+		case 264: // Down
+		case 265: // Up
+		{
+			const int count = SelectableCount();
+			if (count > 0)
+				m_Highlight = ((m_Highlight < 0 ? 0 : m_Highlight + (key == 264 ? 1 : -1)) % count + count) % count;
+			ApplyHighlight();
+			return Reply::Handled_();
+		}
+		case 257: // Enter
+		case 335:
+			if (PopupMenuRow* row = HighlightedRow())
+				row->Activate();
+			return Reply::Handled_();
+		default:
+			return Reply::Handled_(); // a menu swallows the keys while it has the focus
+		}
+	}
+
+private:
+	float FieldHeight() const { return (m_AlwaysShowField || !m_Filter.empty()) ? kFieldHeight : 0.0f; }
+
+	static void AppendUtf8(std::string& out, uint32_t cp)
+	{
+		if (cp < 0x80) out += (char)cp;
+		else if (cp < 0x800) { out += (char)(0xC0 | (cp >> 6)); out += (char)(0x80 | (cp & 0x3F)); }
+		else if (cp < 0x10000) { out += (char)(0xE0 | (cp >> 12)); out += (char)(0x80 | ((cp >> 6) & 0x3F)); out += (char)(0x80 | (cp & 0x3F)); }
+		else { out += (char)(0xF0 | (cp >> 18)); out += (char)(0x80 | ((cp >> 12) & 0x3F)); out += (char)(0x80 | ((cp >> 6) & 0x3F)); out += (char)(0x80 | (cp & 0x3F)); }
+	}
+
+	static std::string Lower(std::string text)
+	{
+		for (char& c : text)
+			c = (char)std::tolower((unsigned char)c);
+		return text;
+	}
+
+	void Rebuild()
+	{
+		if (UIApplication::IsValid())
+			for (auto& row : m_Rows)
+				UIApplication::Get().ClearInputReferencesTo(row.get());
+		m_Rows.clear();
+		const std::string needle = Lower(m_Filter);
+		for (const PopupMenuEntry& e : m_Entries)
+		{
+			if (!needle.empty())
+			{
+				if (e.Separator || e.Header)
+					continue;
+				if (Lower(e.Label).find(needle) == std::string::npos)
+					continue;
+			}
+			m_Rows.push_back(std::make_unique<PopupMenuRow>(m_FontCache, m_Font, m_FontSize, e));
+			SetupParentChild(this, m_Rows.back().get());
+		}
+		// A filter highlights its best (first) match, so Enter runs it.
+		if (!m_Filter.empty() && m_Highlight < 0)
+			m_Highlight = 0;
+		ApplyHighlight();
+		InvalidateLayout();
+	}
+
+	int SelectableCount() const
+	{
+		int count = 0;
+		for (const auto& row : m_Rows)
+			count += row->IsSelectable() ? 1 : 0;
+		return count;
+	}
+
+	PopupMenuRow* HighlightedRow() const
+	{
+		if (m_Highlight < 0)
+			return nullptr;
+		int index = 0;
+		for (const auto& row : m_Rows)
+			if (row->IsSelectable() && index++ == m_Highlight)
+				return row.get();
+		return nullptr;
+	}
+
+	void ApplyHighlight()
+	{
+		PopupMenuRow* lit = (m_Filter.empty() && m_Highlight < 0) ? nullptr : HighlightedRow();
+		for (auto& row : m_Rows)
+			row->SetHighlighted(row.get() == lit);
+	}
+
+	FontCache* m_FontCache;
+	FontHandle m_Font;
+	float m_FontSize;
+	std::vector<PopupMenuEntry> m_Entries;
+	std::vector<std::unique_ptr<PopupMenuRow>> m_Rows;
+	std::string m_Filter;
+	int m_Highlight = -1; // among the selectable rows; -1 = none until the keyboard moves
+	float m_Width = 0.0f;
+	bool m_AlwaysShowField = false;
+	mutable bool m_FocusRequested = false;
+};
+
 inline std::unique_ptr<Widget> BuildPopupMenu(FontCache* fc, FontHandle font, float fontSize,
 	std::vector<PopupMenuEntry> entries, float minWidth = 200.0f)
 {
 	// A menu where some rows carry icons keeps one aligned label column.
-	auto list = std::make_unique<VerticalBox>(BoxOrientation::Vertical);
-	for (PopupMenuEntry& e : entries)
-		list->AddChild(std::make_unique<PopupMenuRow>(fc, font, fontSize, std::move(e)));
-	return std::make_unique<PopupFrame>(std::move(list), minWidth);
+	return std::make_unique<PopupFrame>(std::make_unique<FilterablePopupList>(fc, font, fontSize, std::move(entries)), minWidth);
 }
 
 inline void ShowPopupMenu(FontCache* fc, FontHandle font, float fontSize,

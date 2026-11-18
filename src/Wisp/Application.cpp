@@ -333,6 +333,10 @@ WindowContext* UIApplication::GetContextContaining(Widget* w) const
 			node->ForEachChild([&](Widget* c) { walk(c); });
 		};
 		walk(ctx->Root.get());
+		// A popup's widgets too (a widget in a popup asking for an animation
+		// tick was never found, so it never ticked).
+		if (!found)
+			walk(ctx->PopupRoot.get());
 		if (found) return ctx.get();
 	}
 	return nullptr;
