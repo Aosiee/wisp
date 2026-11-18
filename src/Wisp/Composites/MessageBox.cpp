@@ -24,11 +24,8 @@ static WidgetRef<SButton> MakeModalButton(FontCache* fc, FontHandle fh, float fs
 	return btn;
 }
 
-template<typename... Buttons>
-static std::unique_ptr<Widget> ButtonRow(Buttons&&... buttons)
+static std::unique_ptr<Widget> ButtonRowOf(std::vector<std::unique_ptr<Widget>> list)
 {
-	std::vector<std::unique_ptr<Widget>> list;
-	(list.push_back(std::unique_ptr<Widget>(std::move(buttons))), ...);
 	auto row = WispNew(SHorizontalBox);
 	*row + row->AddSlot().Fill(1.0f)[ WispNew(SSpacer, glm::vec2(0,0)) ];
 	for (size_t i = 0; i < list.size(); i++)
@@ -41,6 +38,14 @@ static std::unique_ptr<Widget> ButtonRow(Buttons&&... buttons)
 		*row + std::move(slot)[ std::move(sized) ];
 	}
 	return std::unique_ptr<Widget>(std::move(row));
+}
+
+template<typename... Buttons>
+static std::unique_ptr<Widget> ButtonRow(Buttons&&... buttons)
+{
+	std::vector<std::unique_ptr<Widget>> list;
+	(list.push_back(std::unique_ptr<Widget>(std::move(buttons))), ...);
+	return ButtonRowOf(std::move(list));
 }
 
 std::unique_ptr<Widget> MessageBox::BuildContent(FontCache* fc, FontHandle fh, float fs,
@@ -129,6 +134,18 @@ void MessageBox::ShowSaveDiscardCancel(FontCache* fc, FontHandle fh, float fs,
 	});
 	UIApplication::Get().ShowPopup(BuildContent(fc, fh, fs, title, message,
 		ButtonRow(std::move(discardBtn), std::move(cancelBtn), std::move(saveBtn))));
+}
+
+void MessageBox::ShowChoices(FontCache* fc, FontHandle fh, float fs,
+	const std::string& title, const std::string& message, std::vector<Choice> choices)
+{
+	std::vector<std::unique_ptr<Widget>> buttons;
+	for (Choice& choice : choices)
+		buttons.push_back(std::unique_ptr<Widget>(MakeModalButton(fc, fh, fs, choice.Label, [onClick = std::move(choice.OnClick)]() {
+			UIApplication::Get().RequestDismissPopups();
+			if (onClick) onClick();
+		}, choice.Primary)));
+	UIApplication::Get().ShowPopup(BuildContent(fc, fh, fs, title, message, ButtonRowOf(std::move(buttons))));
 }
 
 } // namespace wisp

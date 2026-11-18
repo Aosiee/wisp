@@ -9,6 +9,7 @@
 #include "Wisp/Application.h"
 #include <functional>
 #include <string>
+#include <vector>
 #include "Wisp/StyleTokens.h"
 
 namespace wisp {
@@ -47,6 +48,18 @@ public:
 		std::function<void()> onSave,
 		std::function<void()> onDiscard,
 		std::function<void()> onCancel = nullptr);
+
+	// Any set of buttons, left to right; the one marked Primary takes the
+	// accent (make it the safe choice for a destructive prompt). Escape / a
+	// click outside dismiss with no action.
+	struct Choice
+	{
+		std::string Label;
+		std::function<void()> OnClick;
+		bool Primary = false;
+	};
+	static void ShowChoices(FontCache* fc, FontHandle fh, float fontSize,
+		const std::string& title, const std::string& message, std::vector<Choice> choices);
 
 	static constexpr Brush BackgroundBrush{ wisp::tokens::Popup };
 	// Button brushes (shared defaults)
