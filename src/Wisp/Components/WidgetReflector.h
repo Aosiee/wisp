@@ -54,7 +54,7 @@ public:
 		float treeHeight = h * 0.58f;
 		float inspTop = treeTop + treeHeight + 4;
 		const float rowH = 22;
-		const float textScale = 0.62f;
+		const float textScale = 0.8f; // 0.62 drew a ~9 px tree
 
 		// Rebuild tree snapshot
 		RebuildTree();
@@ -118,7 +118,7 @@ public:
 			{
 				float ay = y + (rowH - 5) * 0.5f;
 				drawList.AddBox(layerId+2, {indX, ay}, {5, 5},
-					row.Expanded ? glm::vec4(0.9f,0.7f,0.2f,1) : wisp::tokens::TextMuted, treeClip);
+					row.Expanded ? tokens::Warning : tokens::TextMuted, treeClip);
 			}
 			float textX = indX + (row.HasChildren ? 8 : 4);
 			float inkTop, inkBottom;
@@ -126,7 +126,7 @@ public:
 			float textY = y + (rowH - (inkBottom - inkTop)) * 0.5f - inkTop;
 			PaintText(drawList, layerId+2, {textX, textY}, row.TypeName,
 				row.Vis == Visibility::Collapsed ? wisp::tokens::TextMuted
-				: (row.Enabled ? wisp::tokens::TextPrimary : glm::vec4(0.55f,0.55f,0.6f,1)), treeClip, textScale);
+				: (row.Enabled ? tokens::TextPrimary : tokens::TextDisabled), treeClip, textScale);
 
 			m_RowRects.push_back({row.Target, {pos.x+1, y, w-2, rowH}});
 			y += rowH;
@@ -140,7 +140,7 @@ public:
 		{
 			float iy = inspTop + 24;
 			auto infoLine = [&](const std::string& label, const std::string& value, const glm::vec4& col = wisp::tokens::TextSecondary) {
-				PaintText(drawList, layerId+2, {pos.x+4, iy}, label + ": " + value, col, clip, 0.7f);
+				PaintText(drawList, layerId+2, {pos.x+4, iy}, label + ": " + value, col, clip, kSmallScale);
 				iy += 16;
 			};
 
@@ -148,7 +148,7 @@ public:
 			if (std::strcmp(m_Selected->GetTypeName(), "DockSpace") == 0)
 			{
 				std::string dump = static_cast<DockSpace*>(m_Selected)->DumpModel();
-				PaintText(drawList, layerId+2, {pos.x+8, iy}, "Dock model:", wisp::tokens::TextSecondary, clip, 0.7f);
+				PaintText(drawList, layerId+2, {pos.x+8, iy}, "Dock model:", wisp::tokens::TextSecondary, clip, kSmallScale);
 				iy += 14;
 				size_t from = 0;
 				int lines = 0;
@@ -184,7 +184,7 @@ public:
 
 			const char* visNames[] = {"Visible","Hidden","Collapsed","HitTestInvisible","SelfHitTestInvisible"};
 			infoLine("Visibility", visNames[(int)m_Selected->GetVisibility()]);
-			infoLine("Enabled", m_Selected->IsEnabled() ? "true" : "false", m_Selected->IsEnabled() ? glm::vec4(0.5f,0.9f,0.5f,1) : glm::vec4(0.9f,0.4f,0.4f,1));
+			infoLine("Enabled", m_Selected->IsEnabled() ? "true" : "false", m_Selected->IsEnabled() ? tokens::Success : tokens::Error);
 			infoLine("Focusable", m_Selected->SupportsFocus() ? "true" : "false");
 			infoLine("Clipping", m_Selected->GetClipping() == Clipping::Inherit ? "Inherit" : "Custom");
 			infoLine("Theme", m_Selected->GetTheme() ? "set" : "inherited");
@@ -357,22 +357,26 @@ private:
 			{ ReflectorButton::Clear, "Clear" },
 		};
 
+		// Buttons sized to their labels, rounded, the active pick mode in
+		// the accent-subtle chip (the old fixed 40 px boxes, 0.7x text and
+		// colour literals).
 		float bx = pos.x + 4;
 		float by = pos.y + 24;
 		for (auto& d : defs)
 		{
-			float bw = d.Button == ReflectorButton::Clear ? 46 : 40;
+			float bw = std::round(m_FontCache->MeasureText(m_Font, d.Label, m_FontSize * kSmallScale).x + 16.0f);
 			bool active =
 				(d.Button == ReflectorButton::PickHit   && cur == UIApplication::PickMode::HitTest) ||
 				(d.Button == ReflectorButton::PickAbs   && cur == UIApplication::PickMode::Absolute) ||
 				(d.Button == ReflectorButton::PickFocus && cur == UIApplication::PickMode::Focusable);
-			glm::vec4 bg = active ? glm::vec4(0.2f,0.4f,0.6f,1) : wisp::tokens::Popup;
-			dl.AddBox(layer, {bx, by}, {bw, 20}, bg, clip);
+			const float br[4] = { tokens::RadiusSmall, tokens::RadiusSmall, tokens::RadiusSmall, tokens::RadiusSmall };
+			dl.AddRoundedBox(layer, {bx, by}, {bw, 20}, active ? tokens::AccentSubtle : tokens::Control, br, 1.0f,
+				active ? tokens::Accent : tokens::Border, clip);
 			float inkTop, inkBottom;
-			MeasureInkBox(d.Label, 0.7f, inkTop, inkBottom);
+			MeasureInkBox(d.Label, kSmallScale, inkTop, inkBottom);
 			float ly = by + (20.0f - (inkBottom - inkTop)) * 0.5f - inkTop;
-			PaintText(dl, layer+1, {bx + 5, ly}, d.Label,
-				active ? glm::vec4(1,1,1,1) : wisp::tokens::TextSecondary, clip, 0.7f);
+			PaintText(dl, layer+1, {bx + 8, ly}, d.Label,
+				active ? tokens::AccentHover : tokens::TextSecondary, clip, kSmallScale);
 			m_ModeRects.push_back({d.Button, {bx, by, bw, 20}});
 			bx += bw + 4;
 		}
@@ -387,10 +391,10 @@ private:
 		default: break;
 		}
 		float sInkTop, sInkBottom;
-		MeasureInkBox(status, 0.7f, sInkTop, sInkBottom);
+		MeasureInkBox(status, kSmallScale, sInkTop, sInkBottom);
 		float sy = by + (20.0f - (sInkBottom - sInkTop)) * 0.5f - sInkTop;
 		PaintText(dl, layer, {bx + 6, sy}, status,
-			cur != UIApplication::PickMode::None ? glm::vec4(1.0f,0.7f,0.2f,1) : wisp::tokens::TextMuted, clip, 0.7f);
+			cur != UIApplication::PickMode::None ? tokens::Warning : tokens::TextMuted, clip, kSmallScale);
 	}
 
 	void RebuildTree() const
@@ -565,6 +569,7 @@ private:
 	FontCache* m_FontCache;
 	FontHandle m_Font;
 	float m_FontSize;
+	static constexpr float kSmallScale = 0.85f; // the toolbar / details text
 
 	mutable std::vector<Row> m_Rows;
 	mutable std::vector<HlRect> m_AllRects;
