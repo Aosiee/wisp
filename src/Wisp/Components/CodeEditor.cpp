@@ -171,6 +171,17 @@ namespace wisp {
 
 	// ---- layout / tokens ----------------------------------------------------
 
+	int CodeEditor::ChangeMarkerAt(int line) const
+	{
+		for (size_t i = 0; i < m_ChangeMarkers.size(); i++)
+		{
+			const ChangeMarker& m = m_ChangeMarkers[i];
+			if (m.Kind == ChangeKind::Deleted ? (line == m.Line || line == m.Line - 1) : (line >= m.Line && line < m.Line + m.Count))
+				return (int)i;
+		}
+		return -1;
+	}
+
 	float CodeEditor::BreakpointMargin() const
 	{
 		return m_OnBreakpointClick ? kBreakpointColumn : 0.0f;
@@ -521,6 +532,21 @@ namespace wisp {
 			if (line == m_DropPos.Line)
 				dl.AddBox(layerId + 6, { std::round(xOf(line, m_DropPos.Col)) - 1.0f, y + 1.0f }, { 2.0f, L.LineHeight - 2.0f }, tokens::CodeDropCaret, textClip);
 
+			// The change markers - a bar beside the changed lines, a wedge
+			// at a deletion's place.
+			for (const ChangeMarker& m : m_ChangeMarkers)
+			{
+				const float x = L.Origin.x + L.GutterWidth - 3.0f;
+				if (m.Kind == ChangeKind::Deleted)
+				{
+					if (line == m.Line)
+						dl.AddBox(layerId + 4, { x - 2.0f, y - 2.0f }, { 5.0f, 4.0f }, tokens::CodeChangeDeleted, clip);
+					continue;
+				}
+				if (line >= m.Line && line < m.Line + m.Count)
+					dl.AddBox(layerId + 4, { x, y }, { 3.0f, L.LineHeight }, m.Kind == ChangeKind::Added ? tokens::CodeChangeAdded : tokens::CodeChangeModified, clip);
+			}
+
 			// The gutter: the line number and the fold chevron.
 			PaintLineNumber(dl, layerId + 3, line, y, line == primary.Pos.Line ? tokens::CodeLineNumberActive : tokens::CodeLineNumber, clip);
 			if (m_Model->FoldStartingAt(line) && (m_GutterHovered || m_Model->IsFolded(line)))
@@ -729,6 +755,12 @@ namespace wisp {
 			m_OnBreakpointClick(at.Line, 0);
 			return Reply::Handled_().SetFocus();
 		}
+		if (m_OnChangeMarkerClick && pos.x >= L.Origin.x + L.GutterWidth - 5.0f && pos.x < L.Origin.x + L.GutterWidth)
+			if (const int marker = ChangeMarkerAt(at.Line); marker >= 0)
+			{
+				m_OnChangeMarkerClick((size_t)marker);
+				return Reply::Handled_().SetFocus();
+			}
 		if (pos.x < L.Origin.x + L.GutterWidth)
 		{
 			// The fold column toggles a fold; the numbers select lines.

@@ -391,3 +391,57 @@ TEST_CASE("code model: a rename's edits apply as one undo step, the caret kept")
 }
 
 } // namespace wisp_code_tests
+
+// The change markers' line diff.
+#include "Wisp/Code/LineDiff.h"
+
+TEST_CASE("code line diff: added, modified and deleted hunks against a base, in order")
+{
+	using namespace wisp::code;
+	const std::string base = "a\nb\nc\nd\ne\nf\n";
+	auto diff = [&](const std::string& current) { return DiffLines(SplitLines(base), SplitLines(current)); };
+
+	CHECK(diff(base).empty());
+	CHECK(SplitLines("x\ny\n").size() == 2);
+	CHECK(SplitLines("x\r\ny").size() == 2);
+
+	// One line added after b, c changed, e deleted.
+	const std::vector<LineChange> changes = diff("a\nb\nNEW\nC!\nd\nf\n");
+	REQUIRE(changes.size() == 2);
+	CHECK(changes[0].Kind == LineChangeKind::Modified); // NEW + C! replace c
+	CHECK(changes[0].Line == 2);
+	CHECK(changes[0].Count == 2);
+	CHECK(changes[0].BaseLine == 2);
+	CHECK(changes[0].BaseCount == 1);
+	CHECK(changes[1].Kind == LineChangeKind::Deleted); // e
+	CHECK(changes[1].Line == 5);
+	CHECK(changes[1].BaseLine == 4);
+	CHECK(changes[1].BaseCount == 1);
+
+	const std::vector<LineChange> added = diff("a\nb\nc\nd\ne\nf\ng\nh\n");
+	REQUIRE(added.size() == 1);
+	CHECK(added[0].Kind == LineChangeKind::Added);
+	CHECK(added[0].Line == 6);
+	CHECK(added[0].Count == 2);
+
+	const std::vector<LineChange> top = diff("b\nc\nd\ne\nf\n");
+	REQUIRE(top.size() == 1);
+	CHECK(top[0].Kind == LineChangeKind::Deleted);
+	CHECK(top[0].Line == 0);
+
+	// Interleaved edits keep their own hunks.
+	const std::vector<LineChange> mixed = diff("A\nb\nc\nx\nd\ne\nF\n");
+	REQUIRE(mixed.size() == 3);
+	CHECK(mixed[0].Kind == LineChangeKind::Modified);
+	CHECK(mixed[1].Kind == LineChangeKind::Added);
+	CHECK(mixed[1].Line == 3);
+	CHECK(mixed[2].Kind == LineChangeKind::Modified);
+	CHECK(mixed[2].Line == 6);
+
+	// Past the edit budget, the middle is one modified hunk.
+	const std::vector<LineChange> rewrite = DiffLines(SplitLines(base), SplitLines("1\n2\n3\n4\n5\n6\n"), 2);
+	REQUIRE(rewrite.size() == 1);
+	CHECK(rewrite[0].Kind == LineChangeKind::Modified);
+	CHECK(rewrite[0].Count == 6);
+	CHECK(rewrite[0].BaseCount == 6);
+}

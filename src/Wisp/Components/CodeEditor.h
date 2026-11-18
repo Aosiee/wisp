@@ -196,6 +196,21 @@ namespace wisp {
 		};
 		void SetBreakpoints(std::vector<Breakpoint> breakpoints) { m_Breakpoints = std::move(breakpoints); }
 		void SetOnBreakpointClick(std::function<void(int line, int button)> fn) { m_OnBreakpointClick = std::move(fn); }
+		// The version control change markers (the host's diff against its
+		// base), painted at the gutter's right edge; a click on one calls the
+		// hook with its index.
+		enum class ChangeKind : uint8_t { Added, Modified, Deleted };
+		struct ChangeMarker
+		{
+			int Line = 0;  // the first line (Deleted: the line the removal sits above)
+			int Count = 0; // lines (0 when Deleted)
+			ChangeKind Kind = ChangeKind::Modified;
+		};
+		void SetChangeMarkers(std::vector<ChangeMarker> markers) { m_ChangeMarkers = std::move(markers); }
+		void SetOnChangeMarkerClick(std::function<void(size_t index)> fn) { m_OnChangeMarkerClick = std::move(fn); }
+		// The marker covering `line` (a Deleted one: the line below it), or -1.
+		int ChangeMarkerAt(int line) const;
+
 		// The paused statement's line (-1 = none): a band and an arrow.
 		void SetExecutionLine(int line) { m_ExecutionLine = line; }
 		int GetExecutionLine() const { return m_ExecutionLine; }
@@ -357,6 +372,8 @@ namespace wisp {
 		code::TextPos m_DropPos{ -1, -1 };
 		std::vector<Breakpoint> m_Breakpoints;
 		std::function<void(int, int)> m_OnBreakpointClick;
+		std::vector<ChangeMarker> m_ChangeMarkers;
+		std::function<void(size_t)> m_OnChangeMarkerClick;
 		int m_ExecutionLine = -1;
 		float BreakpointMargin() const;
 		std::vector<LineOverlay> m_Overlays;
