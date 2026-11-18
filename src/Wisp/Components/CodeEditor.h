@@ -171,6 +171,35 @@ namespace wisp {
 		void ClosePeek() { m_Peek.Visible = false; }
 		bool IsPeekOpen() const { return m_Peek.Visible; }
 		void SetOnPeekOpen(std::function<void()> fn) { m_OnPeekOpen = std::move(fn); }
+		// Drops. `accepts` picks the payloads the host takes (a drop caret
+		// follows the cursor while one hovers); `drop` gets the payload and
+		// the text position under the cursor.
+		void SetDropTarget(std::function<bool(const DragPayload&)> accepts, std::function<void(const DragPayload&, code::TextPos)> drop)
+		{
+			m_DropAccepts = std::move(accepts);
+			m_OnDrop = std::move(drop);
+		}
+		Reply OnDragEnter(DragOperation& op) override { return OnDragOver(op); }
+		Reply OnDragOver(DragOperation& op) override;
+		Reply OnDragLeave(DragOperation&) override { m_DropPos = { -1, -1 }; return Reply::Unhandled(); }
+		Reply OnDrop(DragOperation& op) override;
+		void OnDragCancelled() override { m_DropPos = { -1, -1 }; }
+
+		// The breakpoint margin (the gutter's left column), present once a
+		// host sets the click hook; button 0 / 1 = left / right.
+		enum class BreakpointStyle : uint8_t { Plain, Conditional, Log };
+		struct Breakpoint
+		{
+			int Line = 0;
+			bool Enabled = true;
+			BreakpointStyle Style = BreakpointStyle::Plain;
+		};
+		void SetBreakpoints(std::vector<Breakpoint> breakpoints) { m_Breakpoints = std::move(breakpoints); }
+		void SetOnBreakpointClick(std::function<void(int line, int button)> fn) { m_OnBreakpointClick = std::move(fn); }
+		// The paused statement's line (-1 = none): a band and an arrow.
+		void SetExecutionLine(int line) { m_ExecutionLine = line; }
+		int GetExecutionLine() const { return m_ExecutionLine; }
+
 		// The display column (visual column plus the hints before it).
 		int DisplayColumn(int line, int col) const;
 		// A text position's top-left on screen (the last paint's layout).
@@ -322,6 +351,14 @@ namespace wisp {
 		bool m_Hovered = false;
 
 		std::function<void(Command, code::TextPos)> m_OnCommand;
+		// Drops, breakpoints and change markers.
+		std::function<bool(const DragPayload&)> m_DropAccepts;
+		std::function<void(const DragPayload&, code::TextPos)> m_OnDrop;
+		code::TextPos m_DropPos{ -1, -1 };
+		std::vector<Breakpoint> m_Breakpoints;
+		std::function<void(int, int)> m_OnBreakpointClick;
+		int m_ExecutionLine = -1;
+		float BreakpointMargin() const;
 		std::vector<LineOverlay> m_Overlays;
 		bool m_ShowInlays = true;
 		struct PeekState

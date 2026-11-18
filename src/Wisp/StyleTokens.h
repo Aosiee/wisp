@@ -85,6 +85,13 @@ inline constexpr glm::vec4 CodeGutter       = Hex(0x161618);
 inline constexpr glm::vec4 CodeLineNumber   = Hex(0x55555D);
 inline constexpr glm::vec4 CodeLineNumberActive = Hex(0xA2A2AB);
 inline constexpr glm::vec4 CodeCurrentLine  = Hex(0xFFFFFF, 0.035f);
+// The debugger's gutter and the paused line; the drop caret.
+inline constexpr glm::vec4 CodeBreakpoint   = Hex(0xE5484D);
+inline constexpr glm::vec4 CodeBreakpointDisabled = Hex(0x8A8A93);
+inline constexpr glm::vec4 CodeLogpoint     = Hex(0xD4A72C);
+inline constexpr glm::vec4 CodeExecutionLine = Hex(0xE0C341, 0.16f);
+inline constexpr glm::vec4 CodeExecutionArrow = Hex(0xF2D04B);
+inline constexpr glm::vec4 CodeDropCaret    = Hex(0x3D8BFD);
 inline constexpr glm::vec4 CodeSelection    = Hex(0x264F78);
 inline constexpr glm::vec4 CodeFindMatch    = Hex(0xE0A82E, 0.22f);
 inline constexpr glm::vec4 CodeIndentGuide  = Hex(0xFFFFFF, 0.06f);

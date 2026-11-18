@@ -33,6 +33,7 @@ namespace wisp {
 		constexpr float kMinimapLine = 2.0f;   // px per line
 		constexpr float kMinimapChar = 1.0f;   // px per column
 		constexpr float kFoldColumn = 14.0f;
+		constexpr float kBreakpointColumn = 16.0f;
 		constexpr float kTextPad = 6.0f;
 
 		glm::vec4 ColourOf(code::TokenKind kind)
@@ -170,6 +171,34 @@ namespace wisp {
 
 	// ---- layout / tokens ----------------------------------------------------
 
+	float CodeEditor::BreakpointMargin() const
+	{
+		return m_OnBreakpointClick ? kBreakpointColumn : 0.0f;
+	}
+
+	Reply CodeEditor::OnDragOver(DragOperation& op)
+	{
+		if (!m_DropAccepts || !m_DropAccepts(op.Payload))
+		{
+			m_DropPos = { -1, -1 };
+			return Reply::Unhandled();
+		}
+		m_DropPos = PosAt(op.CurrentPos);
+		return Reply::Handled_();
+	}
+
+	Reply CodeEditor::OnDrop(DragOperation& op)
+	{
+		m_DropPos = { -1, -1 };
+		if (!m_DropAccepts || !m_DropAccepts(op.Payload) || !m_OnDrop)
+			return Reply::Unhandled();
+		const code::TextPos at = PosAt(op.CurrentPos);
+		m_Model->SetCaret(at, false);
+		m_OnDrop(op.Payload, at);
+		Touch();
+		return Reply::Handled_().SetFocus();
+	}
+
 	void CodeEditor::UpdateLayout(const Geometry& geom) const
 	{
 		Layout& layout = m_Layout;
@@ -186,7 +215,7 @@ namespace wisp {
 		int digits = 1;
 		for (int n = m_Model->Doc().LineCount(); n >= 10; n /= 10)
 			digits++;
-		layout.GutterWidth = std::max(3, digits) * layout.CharWidth + kFoldColumn + 18.0f;
+		layout.GutterWidth = std::max(3, digits) * layout.CharWidth + kFoldColumn + 18.0f + BreakpointMargin();
 		const bool minimap = m_ShowMinimap && layout.Size.x > 420.0f;
 		layout.MinimapLeft = layout.Origin.x + layout.Size.x - (minimap ? kMinimapWidth : 0.0f);
 		layout.TextLeft = layout.Origin.x + layout.GutterWidth + kTextPad;
@@ -417,7 +446,7 @@ namespace wisp {
 					if (line == marker.Line)
 					{
 						const float r[4] = { 3.0f, 3.0f, 3.0f, 3.0f };
-						dl.AddRoundedBox(layerId + 4 + pass, { L.Origin.x + 5.0f, y + L.LineHeight * 0.5f - 3.0f }, { 6.0f, 6.0f }, tint, r, 0.0f, tint, clip);
+						dl.AddRoundedBox(layerId + 4 + pass, { L.Origin.x + BreakpointMargin() + 5.0f, y + L.LineHeight * 0.5f - 3.0f }, { 6.0f, 6.0f }, tint, r, 0.0f, tint, clip);
 					}
 					const size_t firstText = text.find_first_not_of(" \t");
 					int from = firstText == std::string::npos ? (int)text.size() : (int)firstText;
@@ -466,6 +495,31 @@ namespace wisp {
 					}
 				}
 			}
+
+			// The paused line, the breakpoints; the drop caret.
+			if (line == m_ExecutionLine)
+				dl.AddBox(layerId + 1, { L.Origin.x + L.GutterWidth, y }, { L.TextRight - L.Origin.x - L.GutterWidth, L.LineHeight }, tokens::CodeExecutionLine, clip);
+			for (const Breakpoint& bp : m_Breakpoints)
+			{
+				if (bp.Line != line)
+					continue;
+				const glm::vec4 tint = !bp.Enabled ? tokens::CodeBreakpointDisabled : bp.Style == BreakpointStyle::Log ? tokens::CodeLogpoint : tokens::CodeBreakpoint;
+				const float size = 10.0f;
+				const glm::vec2 at{ std::round(L.Origin.x + (kBreakpointColumn - size) * 0.5f), std::round(y + (L.LineHeight - size) * 0.5f) };
+				const float round = bp.Style == BreakpointStyle::Log ? 2.0f : size * 0.5f; // a logpoint is a square
+				const float r[4] = { round, round, round, round };
+				if (bp.Enabled)
+					dl.AddRoundedBox(layerId + 4, at, { size, size }, tint, r, 0.0f, tint, clip);
+				else
+					dl.AddRoundedBox(layerId + 4, at, { size, size }, tokens::WithAlpha(tint, 0.0f), r, 1.5f, tint, clip);
+				if (bp.Style == BreakpointStyle::Conditional && bp.Enabled)
+					dl.AddBox(layerId + 5, { at.x + 2.5f, at.y + size * 0.5f - 0.75f }, { size - 5.0f, 1.5f }, tokens::CodeBackground, clip);
+			}
+			if (line == m_ExecutionLine)
+				if (const GlyphInfo* arrow = m_FontCache ? m_FontCache->GetGlyph(m_Font, icons::cp::ChevronRight, m_FontSize) : nullptr)
+					AddGlyph(dl, layerId + 6, { std::round(L.Origin.x + 3.0f), std::round(y + L.Ascent) }, *arrow, tokens::CodeExecutionArrow, clip);
+			if (line == m_DropPos.Line)
+				dl.AddBox(layerId + 6, { std::round(xOf(line, m_DropPos.Col)) - 1.0f, y + 1.0f }, { 2.0f, L.LineHeight - 2.0f }, tokens::CodeDropCaret, textClip);
 
 			// The gutter: the line number and the fold chevron.
 			PaintLineNumber(dl, layerId + 3, line, y, line == primary.Pos.Line ? tokens::CodeLineNumberActive : tokens::CodeLineNumber, clip);
@@ -626,6 +680,11 @@ namespace wisp {
 		}
 		m_Signature.Visible = false;
 		const Layout& L = m_Layout;
+		if (button == 1 && m_OnBreakpointClick && pos.x >= L.Origin.x && pos.x < L.Origin.x + BreakpointMargin())
+		{
+			m_OnBreakpointClick(PosAt(pos).Line, 1);
+			return Reply::Handled_().SetFocus();
+		}
 		if (button == 1 && pos.x >= L.TextLeft - kTextPad && pos.x < L.TextRight)
 		{
 			const code::TextPos at = PosAt(pos);
@@ -665,6 +724,11 @@ namespace wisp {
 			return Reply::Handled_().SetFocus().CaptureMouse();
 		}
 		const code::TextPos at = PosAt(pos);
+		if (m_OnBreakpointClick && pos.x < L.Origin.x + BreakpointMargin())
+		{
+			m_OnBreakpointClick(at.Line, 0);
+			return Reply::Handled_().SetFocus();
+		}
 		if (pos.x < L.Origin.x + L.GutterWidth)
 		{
 			// The fold column toggles a fold; the numbers select lines.
