@@ -111,8 +111,6 @@ public:
 	// The app only needs to call these once; everything else is automatic.
 	static void Init(FontCache* fontCache);
 	static void Shutdown();
-	// Shader hot reload (the UI shader family).
-	static bool ReloadShader(const std::string& assetPath);
 	// Font hot reload (re-parse + atlas rebuild + relayout).
 	static bool ReloadFont(const std::string& assetPath);
 	static UIApplication& Get() { return *s_Instance; }

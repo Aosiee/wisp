@@ -37,13 +37,11 @@ void UIApplication::Init(FontCache* fontCache)
 	s_Instance->m_Renderer = std::make_unique<RendererVulkan>();
 	s_Instance->m_Renderer->Init(fontCache);
 
-	// The shader-reload routing (the engine cannot include Wisp
-	// headers, so the backend registers itself here). The hot-reload
+	// The font-reload routing (the engine cannot include Wisp
+	// headers, so the backend registers itself here; Wisp's shaders reload
+	// in the RHI with every other). The hot-reload
 	// client itself is stripped from TE_CONF_DIST builds.
 #if !defined(TE_CONF_DIST)
-	TinyEngine::HotReload::SetShaderReloadCallback([](const std::string& path) {
-		return UIApplication::ReloadShader(path);
-	});
 	TinyEngine::HotReload::SetFontReloadCallback([](const std::string& path) {
 		return UIApplication::ReloadFont(path);
 	});
@@ -177,13 +175,6 @@ void UIApplication::Init(FontCache* fontCache)
 			app.m_Renderer->RenderBatches(batched, ortho, *ctx->RenderState, context.CommandList);
 		}
 	});
-}
-
-bool UIApplication::ReloadShader(const std::string& assetPath)
-{
-	if (!s_Instance || !s_Instance->m_Renderer)
-		return false;
-	return s_Instance->m_Renderer->ReloadShader(assetPath);
 }
 
 bool UIApplication::ReloadFont(const std::string& assetPath)

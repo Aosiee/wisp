@@ -242,28 +242,6 @@ static const TinyEngine::rhi::PipelineStateDesc::Attribute* WispVertexAttributes
 	return attributes;
 }
 
-static void RecreateWispPipeline(WispVulkanImpl& impl, TinyEngine::rhi::ShaderHandle vs,
-                                  TinyEngine::rhi::ShaderHandle fs, uint32_t pushConstantSize,
-                                  uint32_t pushConstantStages,
-                                  TinyEngine::rhi::PipelineHandle* out, bool* initFlag, const char* name)
-{
-	TinyEngine::rhi::Device& device = *impl.Device;
-	TinyEngine::rhi::PipelineStateDesc spec;
-	spec.VertexShader = vs;
-	spec.FragmentShader = fs;
-	spec.VertexStride = sizeof(BatchedVertex);
-	spec.VertexAttributes = std::span(WispVertexAttributes(), 3);
-	spec.PushConstantSize = pushConstantSize;
-	spec.PushConstantStages = pushConstantStages;
-	spec.ColorAttachmentFormats[0] = TinyEngine::rhi::Format::B8G8R8A8_UNORM;
-	spec.EnableBlend = true;
-	spec.DepthTestEnable = false;
-	spec.DepthWriteEnable = false;
-	spec.DepthAttachmentFormat = TinyEngine::rhi::Format::D32_SFLOAT;
-	*out = device.CreatePipeline(spec, name);
-	*initFlag = true;
-}
-
 bool RendererVulkan::Init(const FontCache* fontCache)
 {
 	WispVulkanImpl& impl = *m_Impl;
@@ -282,8 +260,8 @@ bool RendererVulkan::Init(const FontCache* fontCache)
 	{
 		std::vector<uint32_t> vertSpv = TinyEngine::TinyAssetLoader::LoadShaderSPIRV(WispShaderPath("ui_rect.vert"));
 		std::vector<uint32_t> fragSpv = TinyEngine::TinyAssetLoader::LoadShaderSPIRV(WispShaderPath("ui_rect.frag"));
-		impl.RectVertexShader = device.CreateShader(vertSpv, TinyEngine::rhi::ShaderStage::Vertex, "Wisp Rect VS");
-		impl.RectFragmentShader = device.CreateShader(fragSpv, TinyEngine::rhi::ShaderStage::Fragment, "Wisp Rect FS");
+		impl.RectVertexShader = device.CreateShader(vertSpv, TinyEngine::rhi::ShaderStage::Vertex, "ui_rect.vert");
+		impl.RectFragmentShader = device.CreateShader(fragSpv, TinyEngine::rhi::ShaderStage::Fragment, "ui_rect.frag");
 
 		TinyEngine::rhi::PipelineStateDesc spec;
 		spec.VertexShader = impl.RectVertexShader;
@@ -304,8 +282,8 @@ bool RendererVulkan::Init(const FontCache* fontCache)
 	{
 		std::vector<uint32_t> vertSpv = TinyEngine::TinyAssetLoader::LoadShaderSPIRV(WispShaderPath("ui_text.vert"));
 		std::vector<uint32_t> fragSpv = TinyEngine::TinyAssetLoader::LoadShaderSPIRV(WispShaderPath("ui_text.frag"));
-		impl.TextVertexShader = device.CreateShader(vertSpv, TinyEngine::rhi::ShaderStage::Vertex, "Wisp Text VS");
-		impl.TextFragmentShader = device.CreateShader(fragSpv, TinyEngine::rhi::ShaderStage::Fragment, "Wisp Text FS");
+		impl.TextVertexShader = device.CreateShader(vertSpv, TinyEngine::rhi::ShaderStage::Vertex, "ui_text.vert");
+		impl.TextFragmentShader = device.CreateShader(fragSpv, TinyEngine::rhi::ShaderStage::Fragment, "ui_text.frag");
 
 		TinyEngine::rhi::PipelineStateDesc spec;
 		spec.VertexShader = impl.TextVertexShader;
@@ -327,8 +305,8 @@ bool RendererVulkan::Init(const FontCache* fontCache)
 	{
 		std::vector<uint32_t> vertSpv = TinyEngine::TinyAssetLoader::LoadShaderSPIRV(WispShaderPath("ui_roundedbox.vert"));
 		std::vector<uint32_t> fragSpv = TinyEngine::TinyAssetLoader::LoadShaderSPIRV(WispShaderPath("ui_roundedbox.frag"));
-		impl.RoundedBoxVertexShader = device.CreateShader(vertSpv, TinyEngine::rhi::ShaderStage::Vertex, "Wisp RoundedBox VS");
-		impl.RoundedBoxFragmentShader = device.CreateShader(fragSpv, TinyEngine::rhi::ShaderStage::Fragment, "Wisp RoundedBox FS");
+		impl.RoundedBoxVertexShader = device.CreateShader(vertSpv, TinyEngine::rhi::ShaderStage::Vertex, "ui_roundedbox.vert");
+		impl.RoundedBoxFragmentShader = device.CreateShader(fragSpv, TinyEngine::rhi::ShaderStage::Fragment, "ui_roundedbox.frag");
 
 		TinyEngine::rhi::PipelineStateDesc spec;
 		spec.VertexShader = impl.RoundedBoxVertexShader;
@@ -349,8 +327,8 @@ bool RendererVulkan::Init(const FontCache* fontCache)
 	{
 		std::vector<uint32_t> vertSpv = TinyEngine::TinyAssetLoader::LoadShaderSPIRV(WispShaderPath("ui_image.vert"));
 		std::vector<uint32_t> fragSpv = TinyEngine::TinyAssetLoader::LoadShaderSPIRV(WispShaderPath("ui_image.frag"));
-		impl.ImageVertexShader = device.CreateShader(vertSpv, TinyEngine::rhi::ShaderStage::Vertex, "Wisp Image VS");
-		impl.ImageFragmentShader = device.CreateShader(fragSpv, TinyEngine::rhi::ShaderStage::Fragment, "Wisp Image FS");
+		impl.ImageVertexShader = device.CreateShader(vertSpv, TinyEngine::rhi::ShaderStage::Vertex, "ui_image.vert");
+		impl.ImageFragmentShader = device.CreateShader(fragSpv, TinyEngine::rhi::ShaderStage::Fragment, "ui_image.frag");
 
 		TinyEngine::rhi::PipelineStateDesc spec;
 		spec.VertexShader = impl.ImageVertexShader;
@@ -371,75 +349,6 @@ bool RendererVulkan::Init(const FontCache* fontCache)
 	CreateAtlasTexture(impl);
 
 	return true;
-}
-
-bool RendererVulkan::ReloadShader(const std::string& assetPath)
-{
-	WispVulkanImpl& impl = *m_Impl;
-	if (!impl.Device)
-		return false;
-
-	TinyEngine::rhi::Device& device = *impl.Device;
-
-	struct Pair { const char* Name; bool* Flag; TinyEngine::rhi::ShaderHandle* VS; TinyEngine::rhi::ShaderHandle* FS; };
-	const Pair pairs[] = {
-		{ "ui_rect", &impl.RectPipelineInit, &impl.RectVertexShader, &impl.RectFragmentShader },
-		{ "ui_text", &impl.TextPipelineInit, &impl.TextVertexShader, &impl.TextFragmentShader },
-		{ "ui_image", &impl.ImagePipelineInit, &impl.ImageVertexShader, &impl.ImageFragmentShader },
-		{ "ui_roundedbox", &impl.RoundedBoxPipelineInit, &impl.RoundedBoxVertexShader, &impl.RoundedBoxFragmentShader },
-	};
-	for (const Pair& pair : pairs)
-	{
-		if (assetPath.find(pair.Name) == std::string::npos)
-			continue;
-
-		std::vector<uint32_t> vs = TinyEngine::TinyAssetLoader::LoadShaderSPIRVDirect(WispShaderPath(std::string(pair.Name) + ".vert"));
-		std::vector<uint32_t> fs = TinyEngine::TinyAssetLoader::LoadShaderSPIRVDirect(WispShaderPath(std::string(pair.Name) + ".frag"));
-		if (vs.empty() || fs.empty())
-		{
-			TE_CORE_WARN(TinyEngine::LogCore, "Wisp: shader reload failed - keeping the current shaders.");
-			return true;
-		}
-
-		TinyEngine::rhi::ShaderHandle newVS = device.CreateShader(vs, TinyEngine::rhi::ShaderStage::Vertex, (std::string(pair.Name) + ".vert").c_str());
-		TinyEngine::rhi::ShaderHandle newFS = device.CreateShader(fs, TinyEngine::rhi::ShaderStage::Fragment, (std::string(pair.Name) + ".frag").c_str());
-		// Drop the publication flag BEFORE the swap - the record-side
-		// per-batch guards skip the batch while it is false (a bind of the
-		// evicted handle would be a NULL bind).
-		*pair.Flag = false;
-		if (TinyEngine::rhi::IsValid(*pair.VS))
-			device.DestroyShader(*pair.VS);
-		if (TinyEngine::rhi::IsValid(*pair.FS))
-			device.DestroyShader(*pair.FS);
-		*pair.VS = newVS;
-		*pair.FS = newFS;
-
-		// The pipeline itself: destroy the old + recreate through the
-		// cache (the new shader handles key it) - the render path binds
-		// these handles directly, so they must stay valid.
-		const uint32_t pushConstantSize = (pair.Name == std::string("ui_text") || pair.Name == std::string("ui_image"))
-			? (uint32_t)sizeof(TexturedPushConstants)
-			: (pair.Name == std::string("ui_roundedbox")) ? (uint32_t)sizeof(RoundedBoxPushConstants)
-			                                              : (uint32_t)sizeof(glm::mat4);
-		// VERTEX|FRAGMENT where the fragment reads the push block (the
-		// text/image shaders index the bindless array from the fragment).
-		const uint32_t pushConstantStages =
-			(pair.Name == std::string("ui_text") || pair.Name == std::string("ui_image")) ? (1u | 16u) : 1u;
-		TinyEngine::rhi::PipelineHandle* pipeline = nullptr;
-		bool* flag = nullptr;
-		if (pair.Name == std::string("ui_rect")) { pipeline = &impl.RectPipeline; flag = &impl.RectPipelineInit; }
-		else if (pair.Name == std::string("ui_text")) { pipeline = &impl.TextPipeline; flag = &impl.TextPipelineInit; }
-		else if (pair.Name == std::string("ui_image")) { pipeline = &impl.ImagePipeline; flag = &impl.ImagePipelineInit; }
-		else { pipeline = &impl.RoundedBoxPipeline; flag = &impl.RoundedBoxPipelineInit; }
-		// The DestroyShader calls above evicted the cached pipeline (and
-		// released its slot) - the handle is stale; just overwrite it.
-		RecreateWispPipeline(impl, newVS, newFS, pushConstantSize, pushConstantStages, pipeline, flag,
-			(std::string(pair.Name) + " pipeline").c_str());
-
-		TE_CORE_INFO(TinyEngine::LogCore, "Wisp: '{0}' shaders hot-reloaded.", pair.Name);
-		return true;
-	}
-	return false;
 }
 
 void RendererVulkan::Shutdown()
