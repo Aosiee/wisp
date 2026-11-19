@@ -96,7 +96,7 @@ struct ColourPickerState
 
 	// The palette (recent + saved swatches), shared across pickers so every
 	// picker in the app sees the same saved colours. Owned by the app layer.
-	std::shared_ptr<class ColourPaletteData> Palette;
+	std::shared_ptr<struct ColourPaletteData> Palette;
 
 	// Popup control handles, for in-place refresh when the colour changes
 	// from another control. Non-owning; cleared by the popup's destructor

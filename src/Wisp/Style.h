@@ -16,6 +16,7 @@ namespace wisp {
 struct Margin
 {
 	float Left = 0, Top = 0, Right = 0, Bottom = 0;
+	bool operator==(const Margin&) const = default;
 };
 
 // ---- ButtonStyle -----------------------------------------------------------

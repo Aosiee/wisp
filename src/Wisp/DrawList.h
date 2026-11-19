@@ -31,6 +31,7 @@ struct WispBrush
 	glm::vec2  UVMax         = { 1.0f, 1.0f };
 	uint64_t   TextureId     = 0;
 	bool       HasTexture    = false;
+	bool operator==(const WispBrush&) const = default;
 };
 
 using Brush = WispBrush; // alias for compatibility

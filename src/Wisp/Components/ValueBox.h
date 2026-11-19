@@ -364,7 +364,6 @@ public:
 	WISP_WIDGET_TYPE(ValueBox)
 
 	TValueBox(FontCache* fc, FontHandle font, float fontSize, std::string initialValue = "")
-		: m_FontCache(fc), m_Font(font), m_FontSize(fontSize)
 	{
 		m_BgStyle.Background.Tint = wisp::tokens::Field;
 		SetSupportsFocus(true);
@@ -454,9 +453,6 @@ private:
 		InvalidateLayout();
 	}
 
-	FontCache* m_FontCache;
-	FontHandle m_Font;
-	float      m_FontSize;
 	mutable PanelStyle m_BgStyle{};
 	mutable std::string m_Value;
 	mutable std::string m_CommittedValue;

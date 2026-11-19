@@ -26,9 +26,9 @@ enum class CursorType { Default, Hand, TextEditBeam, ResizeEW, ResizeNS, Crossha
 // ---- Forward declarations --------------------------------------------------
 
 class Widget;
-class Slot;
+struct Slot;
 class Theme;
-class DrawList;
+struct DrawList;
 
 // ---- Geometry --------------------------------------------------------------
 
@@ -311,7 +311,7 @@ public:
 
 	// --- Painting ---
 	virtual int OnPaint(const PaintArgs& args, const Geometry& geom,
-		class DrawList& drawList, int layerId, const WidgetStyleContext& style) const = 0;
+		DrawList& drawList, int layerId, const WidgetStyleContext& style) const = 0;
 
 	// --- Events ---
 	virtual Reply OnMouseButtonDown(const glm::vec2&, int) { return Reply::Unhandled(); }

@@ -430,7 +430,6 @@ private:
 	Widget* PickAbsoluteRecursive(WindowContext& ctx, Widget* w, const Geometry& geom, const glm::vec2& pt);
 
 	// Animation
-	double m_LastTime = 0.0;
 	float  m_AnimTime = 0.0f;
 	int    m_HeldModifiers = 0; // GetHeldModifiers
 
