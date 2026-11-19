@@ -236,16 +236,18 @@ private:
 
 	static T DefaultStep()
 	{
-		if constexpr (std::is_same_v<T, float>) return T(0.1);
+		if constexpr (std::is_floating_point_v<T>) return T(0.1);
 		else return T(1);
 	}
 
 	std::string FormatValue() const
 	{
 		char buf[64];
-		if constexpr (std::is_same_v<T, float>)
+		if constexpr (std::is_floating_point_v<T>)
 		{
-			snprintf(buf, sizeof(buf), "%.4f", (double)m_Value);
+			// A double (a world position) shows to 0.1 mm; a float to its
+			// usual four places.
+			snprintf(buf, sizeof(buf), std::is_same_v<T, double> ? "%.5f" : "%.4f", (double)m_Value);
 			char* p = buf + strlen(buf) - 1;
 			while (*p == '0' && p > buf) p--;
 			if (*p == '.') p--;
@@ -258,8 +260,8 @@ private:
 
 	T ParseValue(const std::string& text) const
 	{
-		if constexpr (std::is_same_v<T, float>)
-			return (T)strtof(text.c_str(), nullptr);
+		if constexpr (std::is_floating_point_v<T>)
+			return (T)strtod(text.c_str(), nullptr);
 		else if constexpr (std::is_same_v<T, int>)
 			return (T)strtol(text.c_str(), nullptr, 10);
 		return T{};

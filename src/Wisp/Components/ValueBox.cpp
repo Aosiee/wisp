@@ -82,6 +82,9 @@ bool TValueBox<T>::EvalExpr(const char*& s, double& out)
 template bool TValueBox<float>::EvalExpr(const char*&, double&);
 template bool TValueBox<float>::EvalTerm(const char*&, double&);
 template bool TValueBox<float>::EvalFactor(const char*&, double&);
+template bool TValueBox<double>::EvalExpr(const char*&, double&);
+template bool TValueBox<double>::EvalTerm(const char*&, double&);
+template bool TValueBox<double>::EvalFactor(const char*&, double&);
 template bool TValueBox<int>::EvalExpr(const char*&, double&);
 template bool TValueBox<int>::EvalTerm(const char*&, double&);
 template bool TValueBox<int>::EvalFactor(const char*&, double&);
