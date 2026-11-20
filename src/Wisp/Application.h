@@ -247,6 +247,10 @@ public:
 	// focus/tooltip/drag reference that points inside the subtree, so
 	// DiffHoverPaths and friends never fire events on freed widgets.
 	void ClearInputReferencesTo(Widget* subtree);
+	// Drops every raw reference the app holds to this one widget (focus, the
+	// focus layer stack and memory, hover/capture/tooltip/drag/pick state).
+	// Called by ~Widget; never calls into the widget.
+	void ForgetWidget(const Widget* w);
 
 	// True while any mouse button is held - the
 	// per-panel rebuild gates on it (a rebuild mid-press destroys the

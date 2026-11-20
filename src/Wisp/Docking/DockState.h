@@ -284,6 +284,8 @@ public:
 		return it != m_Icons.end() ? it->second : std::string();
 	}
 
+	bool IsRegistered(const dock::PanelId& id) const { return m_Registry.count(id) > 0; }
+
 	std::string DisplayNameOf(const dock::PanelId& id) const
 	{
 		auto it = m_Registry.find(id);

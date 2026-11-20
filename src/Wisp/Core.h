@@ -303,6 +303,10 @@ public:
 		// Use-Selected arrow). The IsValid guard makes this a safe no-op
 		// once the app is gone (shutdown order either way).
 		CancelAnimationTick();
+		// The app's raw references to this widget go with it - the focus
+		// layer stack held a freed widget when a menu action rebuilt a panel,
+		// and the menu's dismiss popped that layer and called into it.
+		ForgetSelf();
 	}
 
 	// --- Layout ---
@@ -339,6 +343,7 @@ public:
 	virtual void TickAnimation(float) {}
 	void RequestAnimationTick();
 	void CancelAnimationTick();
+	void ForgetSelf();
 
 	// --- State ---
 	virtual bool SupportsFocus() const { return m_SupportsFocus; }

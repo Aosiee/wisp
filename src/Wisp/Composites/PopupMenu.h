@@ -38,6 +38,9 @@ struct PopupMenuEntry
 	bool Enabled = true;
 	bool Separator = false;
 	bool Header = false;   // a non-interactive section label
+	// The check goes to the trailing edge and the lead column keeps the
+	// Icon (a panel list: the state must not replace the identity).
+	bool TrailingCheck = false;
 	// An action that opens its own nested popup (a rename prompt) keeps the
 	// menu's dismissal off - the deferred flush would destroy that prompt.
 	bool KeepOpen = false;
@@ -105,7 +108,8 @@ public:
 		const float labelW = m_FontCache ? m_FontCache->MeasureText(LabelFont(), m_Entry.Label, LabelSize()).x : 0.0f;
 		const float shortcutW = (!m_Entry.Shortcut.empty() && m_FontCache)
 			? m_FontCache->MeasureText(m_Font, m_Entry.Shortcut, tokens::FontSmall).x + popupmenu::kShortcutGap : 0.0f;
-		return { popupmenu::kLeadColumn + labelW + shortcutW + 16.0f,
+		const float trailingW = m_Entry.TrailingCheck ? 24.0f : 0.0f;
+		return { popupmenu::kLeadColumn + labelW + shortcutW + trailingW + 16.0f,
 			m_Entry.Header ? popupmenu::kHeaderHeight : popupmenu::kRowHeight };
 	}
 
@@ -141,7 +145,8 @@ public:
 		const float baseline = std::round(pos.y + (size.y - fm.LineHeight) * 0.5f + fm.Ascent);
 
 		// Lead column: the check (checkable rows) or the entry's icon.
-		const char* lead = m_Entry.Checkable ? (m_Entry.Checked ? icons::Check : nullptr)
+		const bool leadCheck = m_Entry.Checkable && !m_Entry.TrailingCheck;
+		const char* lead = leadCheck ? (m_Entry.Checked ? icons::Check : nullptr)
 			: (m_Entry.Icon.empty() ? nullptr : m_Entry.Icon.c_str());
 		if (lead)
 		{
@@ -149,7 +154,7 @@ public:
 			const float iconPx = 15.0f;
 			const FontMetrics im = m_FontCache->GetMetrics(iconFont, iconPx);
 			const float iy = std::round(pos.y + (size.y - im.LineHeight) * 0.5f + im.Ascent);
-			const glm::vec4 iconCol = m_Entry.Checkable ? (hot ? tokens::TextOnAccent : tokens::Accent)
+			const glm::vec4 iconCol = leadCheck ? (hot ? tokens::TextOnAccent : tokens::Accent)
 				: (!m_Entry.Enabled ? tokens::TextDisabled : (hot ? tokens::TextOnAccent : tokens::TextSecondary));
 			popupmenu::PaintRun(dl, m_FontCache, iconFont, iconPx, { pos.x + 9.0f, iy }, lead, iconCol, layerId + 1, clip);
 		}
@@ -164,6 +169,15 @@ public:
 			const float sb = std::round(pos.y + (size.y - sm.LineHeight) * 0.5f + sm.Ascent);
 			popupmenu::PaintRun(dl, m_FontCache, m_Font, tokens::FontSmall, { std::round(pos.x + size.x - sw - 12.0f), sb },
 				m_Entry.Shortcut, subCol, layerId + 1, clip);
+		}
+		if (m_Entry.TrailingCheck && m_Entry.Checked)
+		{
+			const FontHandle iconFont = UIApplication::FontOr(FontRole::Icons, m_Font);
+			const float iconPx = 14.0f;
+			const FontMetrics im = m_FontCache->GetMetrics(iconFont, iconPx);
+			const float iy = std::round(pos.y + (size.y - im.LineHeight) * 0.5f + im.Ascent);
+			popupmenu::PaintRun(dl, m_FontCache, iconFont, iconPx, { std::round(pos.x + size.x - 12.0f - iconPx), iy },
+				icons::Check, hot ? tokens::TextOnAccent : tokens::Accent, layerId + 1, clip);
 		}
 		return layerId + 2;
 	}

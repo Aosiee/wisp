@@ -257,6 +257,20 @@ public:
 			x += w + 2.0f;
 		}
 
+		// An overflowing strip fades its clipped edges into the bar, so a
+		// cut tab reads as "more this way" instead of a label sliced
+		// mid-word.
+		if (m_Overflow)
+		{
+			const float fadeW = 28.0f;
+			const glm::vec4 solid = m_Style.Inactive.Tint;
+			const glm::vec4 clear = tokens::WithAlpha(solid, 0.0f);
+			if (m_ScrollX > 0.5f)
+				drawList.AddGradient(layerId + 6, { stripX, absPos.y }, { fadeW, m_Style.TabHeight }, solid, clear, clear, solid, stripClip);
+			if (m_ScrollX < m_MaxScrollX - 0.5f)
+				drawList.AddGradient(layerId + 6, { stripX + stripW - fadeW, absPos.y }, { fadeW, m_Style.TabHeight }, clear, solid, solid, clear, stripClip);
+		}
+
 		// Scroll arrows at the strip's OWN edges, only while overflowing
 		// (and only when the toggle is on). They occupy their edge slots -
 		// the tab strip above is inset by the same amount, so the arrows

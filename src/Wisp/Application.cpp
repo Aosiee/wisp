@@ -726,6 +726,56 @@ void Widget::CancelAnimationTick()
 		UIApplication::Get().CancelAnimationTick(this);
 }
 
+void Widget::ForgetSelf()
+{
+	if (UIApplication::IsValid())
+		UIApplication::Get().ForgetWidget(this);
+}
+
+void UIApplication::ForgetWidget(const Widget* w)
+{
+	const auto is = [w](const Widget* other) { return other == w; };
+	for (auto& c : m_Contexts)
+	{
+		std::erase_if(c->HoverPath, is);
+		std::erase_if(c->LastHoverPath, is);
+		if (c->CaptureWidget == w)
+			c->CaptureWidget = nullptr;
+		if (c->TooltipTarget == w)
+		{
+			c->TooltipTarget = nullptr;
+			c->TooltipShown = false;
+		}
+		if (c->PickedWidget == w)
+			c->PickedWidget = nullptr;
+		if (c->PendingDragWidget == w)
+		{
+			c->PendingDragWidget = nullptr;
+			c->PendingDragFactory = nullptr;
+		}
+	}
+	if (m_FocusWidget == w)
+		m_FocusWidget = nullptr;
+	for (FocusLayerState& layer : m_FocusLayerStack)
+		if (layer.focusedWidget == w)
+			layer.focusedWidget = nullptr;
+	std::erase_if(m_LayerFocusMemory, [w](const auto& entry) { return entry.second == w; });
+	m_FocusLayerRoots.erase(const_cast<Widget*>(w));
+	std::erase_if(m_FocusRegistry, [w](const FocusEntry& e) { return e.widget == w; });
+	if (m_PickedWidget == w)
+		m_PickedWidget = nullptr;
+	if (m_PickExclusion == w)
+		m_PickExclusion = nullptr;
+	if (m_HighlightTarget == w)
+		m_HighlightTarget = nullptr;
+	if (m_DragOp)
+	{
+		std::erase_if(m_DragOp->CurrentPath, is);
+		if (m_DragOp->CurrentTarget == w)
+			m_DragOp->CurrentTarget = nullptr;
+	}
+}
+
 bool UIApplication::OnMouseButtonDown(int button) { return OnMouseButtonDown(nullptr, button); }
 bool UIApplication::OnMouseButtonUp(int button)   { return OnMouseButtonUp(nullptr, button); }
 void UIApplication::OnMouseWheel(float delta)      { OnMouseWheel(nullptr, delta); }
@@ -1565,10 +1615,9 @@ void UIApplication::Tick(WindowContext& ctx, uint32_t viewportWidth, uint32_t vi
 				if (e.widget == m_FocusWidget) { valid = true; break; }
 			if (!valid)
 			{
-				// The widget left the registry (a rebuild freed it) - its
-				// OnFocusLost would run on the freed memory: null WITHOUT
-				// calling (the full fix is a Widget::~Widget ->
-				// ForgetWidget(this) registration).
+				// The widget left the registry (collapsed or hidden; a freed
+				// one is already gone - ~Widget -> ForgetWidget): null WITHOUT
+				// calling into it.
 				m_FocusWidget = nullptr;
 				if (!m_FocusRegistry.empty())
 				{

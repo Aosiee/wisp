@@ -172,8 +172,11 @@ public:
 
 		if (m_HasIndicator)
 		{
+			// Unreal's vector row - a slim bar on the leading edge and the
+			// letter in the axis colour (a saturated 18 px block per field
+			// read as noise).
 			const float ir[4] = { r, 0.0f, 0.0f, r };
-			drawList.AddRoundedBox(layerId + 2, absPos, {kIndicatorW, h}, m_IndicatorColour, ir, 0.0f, glm::vec4(0.0f), clipIdx);
+			drawList.AddRoundedBox(layerId + 2, absPos, {kIndicatorBarW, h}, m_IndicatorColour, ir, 0.0f, glm::vec4(0.0f), clipIdx);
 			if (!m_IndicatorLabel.empty() && m_FontCache)
 			{
 				const FontHandle bold = UIApplication::FontOr(FontRole::SemiBold, m_Font);
@@ -181,8 +184,8 @@ public:
 				FontMetrics fm = m_FontCache->GetMetrics(bold, size);
 				float labelW = m_FontCache->MeasureText(bold, m_IndicatorLabel, size).x;
 				popupmenu::PaintRun(drawList, m_FontCache, bold, size,
-					{ std::round(absPos.x + (kIndicatorW - labelW) * 0.5f), std::round(absPos.y + (h - fm.LineHeight) * 0.5f + fm.Ascent) },
-					m_IndicatorLabel, tokens::TextOnAccent, layerId + 3, clipIdx);
+					{ std::round(absPos.x + kIndicatorBarW + (kIndicatorW - kIndicatorBarW - labelW) * 0.5f), std::round(absPos.y + (h - fm.LineHeight) * 0.5f + fm.Ascent) },
+					m_IndicatorLabel, m_IndicatorColour, layerId + 3, clipIdx);
 			}
 		}
 
@@ -233,6 +236,7 @@ public:
 
 private:
 	static constexpr float kIndicatorW = 18.0f;
+	static constexpr float kIndicatorBarW = 3.0f;
 
 	static T DefaultStep()
 	{
