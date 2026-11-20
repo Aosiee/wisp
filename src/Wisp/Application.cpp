@@ -4,7 +4,7 @@
 #include "Math/Projection.h" // the one ortho convention
 #include "TinyEngine/Core/HotReloadClient.h"
 #include "TinyEngine/Asset/TinyAssetLoader.h"
-#include "DebugDraw.h"
+#include "DebugDraw/DebugDraw.h"
 #include "TinyEngine/Renderer/DebugDrawCommon.h"
 #include "TinyEngine/Renderer/RendererDebug.h"
 #include "Wisp/Widgets.h"
