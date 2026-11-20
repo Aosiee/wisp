@@ -1,6 +1,6 @@
 // The Thread Pool panel's data model.
 //
-// The pure, Wisp-free half of the panel (the editor's WispThreadPoolPanel
+// The pure, Wisp-free half of the panel (the editor's ThreadPoolPanel
 // paints it): it turns the profiler's flight-recorder chunks into the
 // per-thread lanes (the named zone blocks + the wait spans), compacts the
 // sub-pixel zones into density blocks (the Tracy-style), and aggregates the
