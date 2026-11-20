@@ -5,7 +5,7 @@
 #include "Wisp/Batcher.h"
 #include "Wisp/FontCache.h"
 #include "TinyEngine/Renderer/UIImageHandle.h"
-#include "TinyEngine/Renderer/DebugDrawCommon.h" // the screen-overlay scratch's element type
+#include "TinyEngine/Renderer/Debug/DebugDrawCommon.h" // the screen-overlay scratch's element type
 #include <chrono>
 #include <functional>
 #include <memory>

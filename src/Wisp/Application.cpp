@@ -3,18 +3,18 @@
 #include "Wisp/RendererVulkan.h"
 #include "Math/Projection.h" // the one ortho convention
 #include "TinyEngine/Core/HotReloadClient.h"
-#include "TinyEngine/Asset/TinyAssetLoader.h"
+#include "TinyEngine/Asset/Load/TinyAssetLoader.h"
 #include "DebugDraw/DebugDraw.h"
-#include "TinyEngine/Renderer/DebugDrawCommon.h"
-#include "TinyEngine/Renderer/RendererDebug.h"
+#include "TinyEngine/Renderer/Debug/DebugDrawCommon.h"
+#include "TinyEngine/Renderer/Debug/RendererDebug.h"
 #include "Wisp/Widgets.h"
 #include "TinyEngine/Renderer/RenderPassContext.h"
 #include "TinyEngine/Renderer/GraphicsContext.h"
 #include "TinyEngine/Core/Application.h"
-#include "TinyEngine/Core/RhiDevice.h"
+#include "TinyEngine/RHI/RhiDevice.h"
 #include "TinyEngine/CVar/EngineCVars.h" // for GetWindow()
 #include "TinyEngine/Memory/MemorySubsystem.h"
-#include "TinyEngine/Core/Input.h"
+#include "TinyEngine/Input/Input.h"
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>

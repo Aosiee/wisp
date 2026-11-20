@@ -3,8 +3,8 @@
 #include "tepch.h"
 #include "Wisp/Graph/GraphCanvas.h"
 
-#include "TinyEngine/Core/Input.h"
-#include "TinyEngine/Core/KeyCodes.h"
+#include "TinyEngine/Input/Input.h"
+#include "TinyEngine/Input/KeyCodes.h"
 #include "Wisp/Application.h"
 #include "Wisp/Components/Border.h"
 #include "Wisp/Components/SizeBox.h"

@@ -10,7 +10,7 @@
 
 #pragma once
 
-#include "TinyEngine/Debug/Profiler.h"
+#include "TinyEngine/Profiler/Profiler.h"
 
 #include <cstdint>
 #include <deque>

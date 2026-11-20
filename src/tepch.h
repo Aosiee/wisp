@@ -17,7 +17,7 @@
 #include <unordered_set>
 
 #include "TinyEngine/Core/Log.h"
-#include "TinyEngine/Debug/Profiler.h"
+#include "TinyEngine/Profiler/Profiler.h"
 
 // P-D: Wisp no longer touches the backend directly (the renderer goes
 // through the RHI; window/surface creation lives in the engine's window

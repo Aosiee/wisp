@@ -4,9 +4,9 @@
 
 #include "TinyEngine/RHI/RHI.h"
 #include "TinyEngine/Core/Application.h"
-#include "TinyEngine/Core/RhiDevice.h"
-#include "TinyEngine/Debug/Profiler.h"
-#include "TinyEngine/Asset/TinyAssetLoader.h"
+#include "TinyEngine/RHI/RhiDevice.h"
+#include "TinyEngine/Profiler/Profiler.h"
+#include "TinyEngine/Asset/Load/TinyAssetLoader.h"
 #ifndef TE_NO_RENDERER
 #include "TinyEngine/Asset/AssetManager.h"
 #else
