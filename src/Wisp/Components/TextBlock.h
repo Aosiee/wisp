@@ -83,7 +83,10 @@ public:
 		if (m_WrapMode == WrapMode::None)
 		{
 			const float limit = geom.LocalSize.x - m_PaddingRight;
-			if (limit > 0.0f && m_FontCache->MeasureText(m_Font, m_Text, m_FontSize).x > limit)
+			// The half pixel: a label arranged at exactly its desired width
+			// comes back a float ulp short after the parents' padding sums,
+			// and must not lose its last glyphs to it.
+			if (limit > 0.0f && m_FontCache->MeasureText(m_Font, m_Text, m_FontSize).x > limit + 0.5f)
 			{
 				const float ellipsisW = m_FontCache->MeasureText(m_Font, "...", m_FontSize).x;
 				while (!displayText.empty()

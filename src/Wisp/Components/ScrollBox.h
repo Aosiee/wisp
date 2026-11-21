@@ -19,6 +19,11 @@ public:
 	// Vertical-only scrolling: the child is laid out at the viewport width
 	// (an inspector's rows compress; nothing ever scrolls sideways).
 	ScrollBox& SetFitWidth(bool fit) { m_FitWidth = fit; InvalidateLayout(); return *this; }
+	// Scroll from code (clamped at the next arrange); ScrollToEnd shows
+	// the bottom - a log's newest lines.
+	void SetScrollY(float y) { m_ScrollOffset.y = std::max(0.0f, y); }
+	float GetScrollY() const { return m_ScrollOffset.y; }
+	void ScrollToEnd() { m_ScrollOffset.y = 1.0e9f; }
 
 
 
