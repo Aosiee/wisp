@@ -7,6 +7,7 @@
 // theme (WISP TE1) overrides styles through Theme, not by mutating these.
 
 #include <glm/glm.hpp>
+#include <cmath>
 #include <cstdint>
 
 namespace wisp::tokens {
@@ -53,6 +54,9 @@ inline constexpr glm::vec4 Accent        = Hex(0x3F86F2);
 inline constexpr glm::vec4 AccentHover   = Hex(0x5596F5);
 inline constexpr glm::vec4 AccentPressed = Hex(0x2F70D6);
 inline constexpr glm::vec4 AccentSubtle  = Hex(0x3F86F2, 0.18f);
+// An accent fill white text reads on at 4.5:1 or better (Accent itself is
+// 3.6:1) - the crash reporter's primary button.
+inline constexpr glm::vec4 AccentStrong  = Hex(0x2A66C8);
 inline constexpr glm::vec4 Success       = Hex(0x3FB950);
 inline constexpr glm::vec4 Warning       = Hex(0xE0A82E);
 inline constexpr glm::vec4 Error         = Hex(0xE5534B);
@@ -186,5 +190,28 @@ inline constexpr glm::vec4 DocNote        = Hex(0x58A6FF);
 inline constexpr glm::vec4 DocTip         = Hex(0x3FB950);
 inline constexpr glm::vec4 DocWarning     = Hex(0xE0A82E);
 inline constexpr float DocCalloutAlpha    = 0.08f;
+
+// ---- Contrast -------------------------------------------------------------------
+
+// `fg` composited over the opaque `bg` the way Wisp blends (in sRGB, as
+// written).
+inline glm::vec4 Over(const glm::vec4& fg, const glm::vec4& bg)
+{
+	return glm::vec4(glm::vec3(fg) * fg.a + glm::vec3(bg) * (1.0f - fg.a), 1.0f);
+}
+
+// WCAG 2's relative luminance and contrast ratio (1..21); a translucent `fg`
+// is composited over `bg` first. Text wants 4.5:1, icons and frames 3:1.
+inline float RelativeLuminance(const glm::vec4& c)
+{
+	auto channel = [](float v) { return v <= 0.04045f ? v / 12.92f : std::pow((v + 0.055f) / 1.055f, 2.4f); };
+	return 0.2126f * channel(c.r) + 0.7152f * channel(c.g) + 0.0722f * channel(c.b);
+}
+
+inline float ContrastRatio(const glm::vec4& fg, const glm::vec4& bg)
+{
+	const float a = RelativeLuminance(Over(fg, bg)), b = RelativeLuminance(bg);
+	return (std::max(a, b) + 0.05f) / (std::min(a, b) + 0.05f);
+}
 
 } // namespace wisp::tokens
