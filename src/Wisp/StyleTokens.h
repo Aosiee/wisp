@@ -163,4 +163,28 @@ inline constexpr float FontHeading = 14.0f;
 inline constexpr float FontTitle   = 16.5f;
 inline constexpr float FontMono    = 13.5f;
 
+// The doc view: the manual and reference pages.
+inline constexpr float DocFontBody  = 14.5f;
+inline constexpr float DocFontCode  = 13.0f;
+inline constexpr float DocFontH1    = 24.0f;
+inline constexpr float DocFontH2    = 19.0f;
+inline constexpr float DocFontH3    = 16.0f;
+inline constexpr float DocFontH4    = 14.5f;
+inline constexpr float DocMeasure   = 860.0f; // the widest text column
+inline constexpr float DocPad       = 20.0f;
+inline constexpr float DocBlockGap  = 10.0f;
+inline constexpr float DocListIndent = 22.0f;
+inline constexpr float DocCodePad   = 10.0f;
+inline constexpr float DocCellPad   = 8.0f;
+inline constexpr glm::vec4 DocText        = Hex(0xCDCDD3);
+inline constexpr glm::vec4 DocHeading     = Hex(0xEDEDF0);
+inline constexpr glm::vec4 DocInlineCode  = Hex(0xFFFFFF, 0.07f);
+inline constexpr glm::vec4 DocCodeText    = Hex(0xDADADF);
+inline constexpr glm::vec4 DocLinkDead    = Hex(0xE5534B, 0.85f);
+inline constexpr glm::vec4 DocQuoteBar    = Hex(0x4A4A52);
+inline constexpr glm::vec4 DocNote        = Hex(0x58A6FF);
+inline constexpr glm::vec4 DocTip         = Hex(0x3FB950);
+inline constexpr glm::vec4 DocWarning     = Hex(0xE0A82E);
+inline constexpr float DocCalloutAlpha    = 0.08f;
+
 } // namespace wisp::tokens

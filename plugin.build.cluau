@@ -24,7 +24,7 @@
 plugin "wisp" {
     enabled_by_default = false,
     public_deps = {
-        "engine", "debug_draw", "math",
+        "engine", "debug_draw", "math", "wisp_text",
         "glfw", "glm", "rapidjson", "stb", "stb_image", "vulkan_headers", "volk",
     },
 }
@@ -78,7 +78,7 @@ const wisp_defines: { string? } = {
 
 let wisp_deps = {
     public = {
-        "engine/engine", "debug_draw/debug_draw", "math/math",
+        "engine/engine", "debug_draw/debug_draw", "math/math", "wisp_text/wisp_text",
         "glfw/glfw", "glm/glm", "rapidjson/rapidjson", "stb/stb",
         "vulkan_headers/vulkan_headers", "volk/volk",
     },
@@ -133,7 +133,7 @@ module "wisp_tool" {
     private_defines = wisp_tool_defines,
     deps = {
         public = {
-            "engine/engine_tool", "debug_draw/debug_draw", "math/math",
+            "engine/engine_tool", "debug_draw/debug_draw", "math/math", "wisp_text/wisp_text",
             "glfw/glfw", "glm/glm", "rapidjson/rapidjson", "stb/stb",
             "vulkan_headers/vulkan_headers", "volk/volk",
         },

@@ -383,6 +383,11 @@ public:
 	bool HasToolTip() const { return !!m_ToolTipFactory; }
 	std::unique_ptr<Widget> CreateToolTip() const { return m_ToolTipFactory ? m_ToolTipFactory() : nullptr; }
 
+	// The doc id F1 opens while the pointer is over this widget (the
+	// deepest tagged widget of the hover path wins).
+	void SetHelpId(std::string id) { m_HelpId = std::move(id); }
+	const std::string& GetHelpId() const { return m_HelpId; }
+
 	// Cursor
 	void SetCursor(CursorType c) { m_Cursor = c; }
 	CursorType GetCursor() const { return m_Cursor; }
@@ -439,6 +444,7 @@ protected:
 	SizeMode   m_SizeMode = SizeMode::Fixed;
 	ToolTipFactory m_ToolTipFactory;
 	CursorType  m_Cursor = CursorType::Default;
+	std::string m_HelpId;
 	std::shared_ptr<Theme> m_Theme;
 	Widget* m_NavLinks[4] = {};
 	bool    m_SupportsFocus = false;
