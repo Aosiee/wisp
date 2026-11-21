@@ -312,8 +312,8 @@ private:
 
 			auto row = std::make_unique<Button>();
 			row->SetNormalBrush({wisp::tokens::Popup});
-			row->SetHoveredBrush({wisp::tokens::Accent});
-			row->SetPressedBrush({wisp::tokens::AccentPressed});
+			row->SetHoveredBrush({ wisp::tokens::Selection });
+			row->SetPressedBrush({ wisp::tokens::AccentFillPressed });
 
 			auto label = std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize, item.Label, wisp::tokens::TextPrimary);
 			auto hbox = std::make_unique<HorizontalBox>(BoxOrientation::Horizontal);
@@ -321,7 +321,7 @@ private:
 
 			if (!item.Shortcut.empty())
 			{
-				auto sc = std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize, item.Shortcut, wisp::tokens::TextMuted);
+				auto sc = std::make_unique<TextBlock>(m_FontCache, m_Font, m_FontSize, item.Shortcut, wisp::tokens::TextSecondary); // reads on the hovered row too
 				hbox->AddChild(std::move(sc));
 			}
 			if (item.SubMenu)

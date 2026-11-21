@@ -13,9 +13,9 @@ static WidgetRef<SButton> MakeModalButton(FontCache* fc, FontHandle fh, float fs
 	const std::string& label, std::function<void()> onClick, bool primary = false)
 {
 	auto btn = WispNew(SButton);
-	btn->SetNormalBrush(primary ? Brush{ tokens::Accent } : MessageBox::ButtonNormal)
-		.SetHoveredBrush(primary ? Brush{ tokens::AccentHover } : MessageBox::ButtonHover)
-		.SetPressedBrush(primary ? Brush{ tokens::AccentPressed } : MessageBox::ButtonPressed)
+	btn->SetNormalBrush(primary ? Brush{ tokens::AccentFill } : MessageBox::ButtonNormal)
+		.SetHoveredBrush(primary ? Brush{ tokens::AccentFillHover } : MessageBox::ButtonHover)
+		.SetPressedBrush(primary ? Brush{ tokens::AccentFillPressed } : MessageBox::ButtonPressed)
 		.SetOnClicked(std::move(onClick));
 	btn->SetContentPadding({ 18.0f, 5.0f, 18.0f, 5.0f });
 	auto text = WispNew(STextBlock, fc, UIApplication::FontOr(FontRole::Medium, fh), fs, label,

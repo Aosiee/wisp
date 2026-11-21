@@ -180,8 +180,8 @@ public:
 		auto addItem = [&](const std::string& label, std::function<void()> fn) {
 			auto row = std::make_unique<Button>();
 			row->SetNormalBrush({ tokens::WithAlpha(tokens::Popup, 0.0f) });
-			row->SetHoveredBrush({ tokens::Accent });
-			row->SetPressedBrush({ tokens::AccentPressed });
+			row->SetHoveredBrush({ tokens::Selection });
+			row->SetPressedBrush({ tokens::AccentFillPressed });
 			// Deferred dismissal: the action may destroy this very Button's
 			// tree (DismissPopups frees it), and the Button's own code runs
 			// after the callback returns - so the click handler only

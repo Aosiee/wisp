@@ -1,14 +1,15 @@
 #pragma once
 
-// The crash reporter's colours read - every text/background token pair
-// tinycrashreport and the editor's crash surfaces (the Crashes panel, the
-// status-bar notice) paint, at WCAG's 4.5:1 for text and 3:1 for icons. A
-// token change that drops a pair below fails here; a new pair in those
-// surfaces gets a row.
+// The editor's colours read, the crash surfaces' included: every text
+// token on every surface text sits on at WCAG's 4.5:1, icons at 3:1, plus
+// the crash surfaces' own pairs. A token change that drops a pair below
+// fails here; a new surface or text token gets a row.
 
 #include "Wisp/StyleTokens.h"
 
 #include <doctest/doctest.h>
+
+#include <string>
 
 namespace wisp_contrast_tests {
 
@@ -63,8 +64,8 @@ TEST_CASE("wisp tokens: the crash reporter's text reads at 4.5:1")
 		{ "the failure status", tokens::Error, tokens::Panel },
 		{ "a matched log line", tokens::TextPrimary, matchedLine },
 		// The primary button, at rest and hovered.
-		{ "the primary button", tokens::TextOnAccent, tokens::AccentStrong },
-		{ "the hovered primary button", tokens::TextOnAccent, tokens::AccentPressed },
+		{ "the primary button", tokens::TextOnAccent, tokens::AccentFill },
+		{ "the hovered primary button", tokens::TextOnAccent, tokens::AccentFillHover },
 		// The chips on every surface they sit on.
 		Chip("an error chip on the header band", tokens::Error, tokens::Raised),
 		Chip("an info chip on the header band", tokens::Info, tokens::Raised),
@@ -99,6 +100,82 @@ TEST_CASE("wisp tokens: the crash reporter's icons read at 3:1")
 		INFO(std::string(p.Name) << ": " << tokens::ContrastRatio(p.Fg, p.Bg));
 		CHECK(tokens::ContrastRatio(p.Fg, p.Bg) >= 3.0f);
 	}
+}
+
+
+// The editor matrix.
+TEST_CASE("wisp tokens: every text token reads on every surface text sits on")
+{
+	struct Named { const char* Name; glm::vec4 Colour; };
+	const Named surfaces[] = {
+		{ "Backdrop", tokens::Backdrop }, { "Panel", tokens::Panel }, { "PanelAlt", tokens::PanelAlt },
+		{ "Raised", tokens::Raised }, { "Popup", tokens::Popup }, { "Control", tokens::Control },
+		{ "Field", tokens::Field }, { "CodeBackground", tokens::CodeBackground },
+	};
+	// TextDisabled is the exemption: disabled controls and decorative icons
+	// (WCAG 1.4.3 / 1.4.11 exempt inactive components) - never readable text.
+	const Named text[] = {
+		{ "TextPrimary", tokens::TextPrimary }, { "TextSecondary", tokens::TextSecondary }, { "TextMuted", tokens::TextMuted },
+		{ "TextLink", tokens::TextLink }, { "Success", tokens::Success }, { "Warning", tokens::Warning },
+		{ "Error", tokens::Error }, { "Info", tokens::Info }, { "DocText", tokens::DocText },
+		{ "DocHeading", tokens::DocHeading }, { "DocCodeText", tokens::DocCodeText }, { "DocLinkDead", tokens::DocLinkDead },
+	};
+	for (const Named& t : text)
+		for (const Named& s : surfaces)
+		{
+			INFO(std::string(t.Name) << " on " << s.Name << ": " << tokens::ContrastRatio(t.Colour, s.Colour));
+			CHECK(tokens::ContrastRatio(t.Colour, s.Colour) >= 4.5f);
+		}
+	// The code gutter's numbers on the code background.
+	CHECK(tokens::ContrastRatio(tokens::CodeLineNumber, tokens::CodeBackground) >= 4.5f);
+	CHECK(tokens::ContrastRatio(tokens::CodeLineNumberActive, tokens::CodeBackground) >= 4.5f);
+}
+
+TEST_CASE("wisp tokens: a selected row's text and the accent fills read")
+{
+	// A selected row paints primary and secondary text (coloured or muted
+	// text goes primary there).
+	for (const glm::vec4& selection : { tokens::Selection, tokens::SelectionInactive })
+	{
+		CHECK(tokens::ContrastRatio(tokens::TextPrimary, selection) >= 4.5f);
+		CHECK(tokens::ContrastRatio(tokens::TextSecondary, selection) >= 4.5f);
+	}
+	// A popup's hovered row (Selection) and pressed row (AccentFillPressed)
+	// under TextPrimary; PopupMenu's hot row under white and its 90 % white
+	// sub-line; a Toggle chip's TextPrimary on its accent tint.
+	CHECK(tokens::ContrastRatio(tokens::TextPrimary, tokens::AccentFillPressed) >= 4.5f);
+	CHECK(tokens::ContrastRatio(tokens::WithAlpha(tokens::TextOnAccent, 0.9f), tokens::AccentFill) >= 4.5f);
+	for (const glm::vec4& surface : { tokens::Panel, tokens::Raised, tokens::Popup })
+	{
+		CHECK(tokens::ContrastRatio(tokens::TextPrimary, tokens::Over(tokens::WithAlpha(tokens::Accent, 0.22f), surface)) >= 4.5f);
+		CHECK(tokens::ContrastRatio(tokens::TextPrimary, tokens::Over(tokens::WithAlpha(tokens::Accent, 0.32f), surface)) >= 4.5f);
+	}
+	// White text sits on the fill accent only.
+	for (const glm::vec4& fill : { tokens::AccentFill, tokens::AccentFillHover, tokens::AccentFillPressed })
+	{
+		INFO(tokens::ContrastRatio(tokens::TextOnAccent, fill));
+		CHECK(tokens::ContrastRatio(tokens::TextOnAccent, fill) >= 4.5f);
+	}
+}
+
+TEST_CASE("wisp tokens: the icon colours read at 3:1 on the panel surfaces")
+{
+	struct Named { const char* Name; glm::vec4 Colour; };
+	const Named icons[] = {
+		{ "Accent", tokens::Accent }, { "AccentHover", tokens::AccentHover }, { "Success", tokens::Success },
+		{ "Warning", tokens::Warning }, { "Error", tokens::Error }, { "Info", tokens::Info },
+		{ "Play", tokens::Play }, { "Stop", tokens::Stop }, { "TypeFolder", tokens::TypeFolder },
+		{ "TypeScene", tokens::TypeScene }, { "TypeMesh", tokens::TypeMesh }, { "TypeMaterial", tokens::TypeMaterial },
+		{ "TypeTexture", tokens::TypeTexture }, { "TypeShader", tokens::TypeShader }, { "TypeScript", tokens::TypeScript },
+		{ "TypeFont", tokens::TypeFont }, { "TypeAudio", tokens::TypeAudio }, { "TypeInput", tokens::TypeInput },
+		{ "TypeCubemap", tokens::TypeCubemap }, { "TypeOther", tokens::TypeOther },
+	};
+	for (const Named& i : icons)
+		for (const glm::vec4& surface : { tokens::Panel, tokens::Raised, tokens::Field })
+		{
+			INFO(std::string(i.Name) << ": " << tokens::ContrastRatio(i.Colour, surface));
+			CHECK(tokens::ContrastRatio(i.Colour, surface) >= 3.0f);
+		}
 }
 
 } // namespace wisp_contrast_tests

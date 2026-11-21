@@ -134,12 +134,12 @@ public:
 		{
 			const float r[4] = { tokens::RadiusSmall, tokens::RadiusSmall, tokens::RadiusSmall, tokens::RadiusSmall };
 			dl.AddRoundedBox(layerId, { pos.x + 2.0f, pos.y + 1.0f }, { size.x - 4.0f, size.y - 2.0f },
-				m_Pressed ? tokens::AccentPressed : tokens::Accent, r, 0.0f, glm::vec4(0.0f), clip);
+				m_Pressed ? tokens::AccentFillPressed : tokens::AccentFill, r, 0.0f, glm::vec4(0.0f), clip);
 		}
 
 		const glm::vec4 textCol = m_Entry.Header ? tokens::TextMuted
 			: (!m_Entry.Enabled ? tokens::TextDisabled : (hot ? tokens::TextOnAccent : tokens::TextPrimary));
-		const glm::vec4 subCol = hot ? tokens::WithAlpha(tokens::TextOnAccent, 0.8f) : tokens::TextMuted;
+		const glm::vec4 subCol = hot ? tokens::WithAlpha(tokens::TextOnAccent, 0.9f) : tokens::TextMuted; // 4.9:1 on AccentFill
 
 		const FontMetrics fm = m_FontCache->GetMetrics(LabelFont(), LabelSize());
 		const float baseline = std::round(pos.y + (size.y - fm.LineHeight) * 0.5f + fm.Ascent);

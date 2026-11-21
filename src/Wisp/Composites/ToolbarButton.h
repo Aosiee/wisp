@@ -73,9 +73,9 @@ inline std::unique_ptr<Button> MakeToolbarButton(FontCache* fc, FontHandle font,
 		normal = tokens::Control;
 		break;
 	case ToolbarButtonVariant::Accent:
-		normal = tokens::Accent;
-		hovered = tokens::AccentHover;
-		pressed = tokens::AccentPressed;
+		normal = tokens::AccentFill;
+		hovered = tokens::AccentFillHover;
+		pressed = tokens::AccentFillPressed;
 		content = tokens::TextOnAccent;
 		iconTint = tokens::TextOnAccent;
 		break;

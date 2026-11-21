@@ -42,9 +42,13 @@ inline constexpr glm::vec4 Separator     = Hex(0x2A2A2F);
 inline constexpr glm::vec4 Shadow        = Hex(0x000000, 0.35f);
 
 // ---- Text -----------------------------------------------------------------------
+// every text token but TextDisabled reads at 4.5:1 or better on every surface text
+// sits on (Wisp/Tests/ContrastTests.h holds the matrix); TextSecondary also on the
+// selection. TextDisabled stays below on purpose - disabled controls and decorative
+// icons only (WCAG exempts both).
 inline constexpr glm::vec4 TextPrimary   = Hex(0xE2E2E6);
-inline constexpr glm::vec4 TextSecondary = Hex(0xA2A2AB);
-inline constexpr glm::vec4 TextMuted     = Hex(0x7D7D86);
+inline constexpr glm::vec4 TextSecondary = Hex(0xB0B0B9);
+inline constexpr glm::vec4 TextMuted     = Hex(0x92929B);
 inline constexpr glm::vec4 TextDisabled  = Hex(0x5E5E66);
 inline constexpr glm::vec4 TextOnAccent  = Hex(0xFFFFFF);
 inline constexpr glm::vec4 TextLink      = Hex(0x6EA8FF);
@@ -54,12 +58,15 @@ inline constexpr glm::vec4 Accent        = Hex(0x3F86F2);
 inline constexpr glm::vec4 AccentHover   = Hex(0x5596F5);
 inline constexpr glm::vec4 AccentPressed = Hex(0x2F70D6);
 inline constexpr glm::vec4 AccentSubtle  = Hex(0x3F86F2, 0.18f);
-// An accent fill white text reads on at 4.5:1 or better (Accent itself is
-// 3.6:1) - the crash reporter's primary button.
-inline constexpr glm::vec4 AccentStrong  = Hex(0x2A66C8);
+// The accent splits in two - Accent/AccentHover for icons, outlines and
+// toggles; AccentFill* for every fill white text (TextOnAccent) sits on,
+// at 4.5:1 or better (white on Accent is 3.6:1).
+inline constexpr glm::vec4 AccentFill        = Hex(0x2A66C8);
+inline constexpr glm::vec4 AccentFillHover   = Hex(0x2F70D6);
+inline constexpr glm::vec4 AccentFillPressed = Hex(0x2559B5);
 inline constexpr glm::vec4 Success       = Hex(0x3FB950);
 inline constexpr glm::vec4 Warning       = Hex(0xE0A82E);
-inline constexpr glm::vec4 Error         = Hex(0xE5534B);
+inline constexpr glm::vec4 Error         = Hex(0xEE6A62);
 inline constexpr glm::vec4 Info          = Hex(0x58A6FF);
 inline constexpr glm::vec4 Play          = Hex(0x48C267);
 inline constexpr glm::vec4 Stop          = Hex(0xE5534B);
@@ -86,8 +93,8 @@ inline constexpr glm::vec4 TypeOther     = Hex(0x8A8A93);
 // ---- Code (wisp::CodeEditor) --------------------------------
 inline constexpr glm::vec4 CodeBackground   = Hex(0x161618);
 inline constexpr glm::vec4 CodeGutter       = Hex(0x161618);
-inline constexpr glm::vec4 CodeLineNumber   = Hex(0x55555D);
-inline constexpr glm::vec4 CodeLineNumberActive = Hex(0xA2A2AB);
+inline constexpr glm::vec4 CodeLineNumber   = Hex(0x86868F);
+inline constexpr glm::vec4 CodeLineNumberActive = TextSecondary;
 inline constexpr glm::vec4 CodeCurrentLine  = Hex(0xFFFFFF, 0.035f);
 // The debugger's gutter and the paused line; the drop caret.
 inline constexpr glm::vec4 CodeBreakpoint   = Hex(0xE5484D);
@@ -184,7 +191,7 @@ inline constexpr glm::vec4 DocText        = Hex(0xCDCDD3);
 inline constexpr glm::vec4 DocHeading     = Hex(0xEDEDF0);
 inline constexpr glm::vec4 DocInlineCode  = Hex(0xFFFFFF, 0.07f);
 inline constexpr glm::vec4 DocCodeText    = Hex(0xDADADF);
-inline constexpr glm::vec4 DocLinkDead    = Hex(0xE5534B, 0.85f);
+inline constexpr glm::vec4 DocLinkDead    = Hex(0xEE6A62);
 inline constexpr glm::vec4 DocQuoteBar    = Hex(0x4A4A52);
 inline constexpr glm::vec4 DocNote        = Hex(0x58A6FF);
 inline constexpr glm::vec4 DocTip         = Hex(0x3FB950);
