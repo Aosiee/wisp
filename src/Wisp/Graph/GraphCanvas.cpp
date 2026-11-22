@@ -178,6 +178,8 @@ namespace graph {
 
 	void GraphCanvas::FrameAll()
 	{
+		m_AutoFrame = true;
+		m_FramedSize = glm::vec2(0.0f); // the next paint frames (it knows the size)
 		if (!m_HasCachedGeometry)
 			return;
 		const std::vector<NodeId> empty;
@@ -215,7 +217,15 @@ namespace graph {
 				m_FirstBuild = false;
 				const std::vector<NodeId> empty;
 				m_Transform = FrameTransform(m_View, empty, m_Size);
+				m_FramedSize = m_Size;
 			}
+		}
+		if (m_AutoFrame && m_Size != m_FramedSize && !m_View.Nodes.empty())
+		{
+			const std::vector<NodeId> empty;
+			m_Transform = FrameTransform(m_View, empty, m_Size);
+			m_FramedSize = m_Size;
+			m_EdgeCacheValid = false;
 		}
 
 		dl.AddBox(layerId, m_Origin, m_Size, wisp::tokens::Panel, args.InheritedClipIndex);
@@ -244,6 +254,7 @@ namespace graph {
 	{
 		if (!m_HasCachedGeometry)
 			return Reply::Unhandled();
+		m_AutoFrame = false;
 		const int newLevel = std::clamp(m_Transform.ZoomLevel + (delta > 0.0f ? 1 : -1),
 			kZoomLevelMin, kZoomLevelMax);
 		if (newLevel == m_Transform.ZoomLevel)
@@ -311,7 +322,14 @@ namespace graph {
 			return Reply::Handled_().CaptureMouse().SetFocus();
 		}
 
-		// The empty canvas (or an edge): the marquee.
+		// An edge selects in an editing schema; the empty canvas (or an edge
+		// a viewer ignores) starts the marquee.
+		if (hit.Kind == HitResult::Kind::Edge && m_Schema)
+		{
+			m_Selected.clear();
+			m_Schema->OnEdgeClick(hit.Edge);
+			return Reply::Handled_().SetFocus();
+		}
 		BeginInteraction(Interaction::Marquee, absPos);
 		return Reply::Handled_().CaptureMouse().SetFocus();
 	}
@@ -382,6 +400,8 @@ namespace graph {
 				const HitResult hit = HitTest(m_View, m_Transform, absPos - m_Origin);
 				if (hit.Kind == HitResult::Kind::Node)
 					OpenContextMenu(hit.Node, absPos);
+				else if (m_Schema)
+					m_Schema->ShowBackgroundMenu(ScreenToWorld(absPos), absPos);
 			}
 			if (m_Interaction == Interaction::PanRightDrag)
 				SaveViewState();
@@ -412,6 +432,8 @@ namespace graph {
 				else
 				{
 					m_Selected.clear();
+					if (m_Schema)
+						m_Schema->OnBackgroundClick();
 				}
 			}
 			else if (m_Interaction == Interaction::NodeDrag || m_Interaction == Interaction::None)
@@ -437,7 +459,18 @@ namespace graph {
 					}
 				}
 				if (m_Interaction == Interaction::NodeDrag)
+				{
+					if (m_MovedPastThreshold && m_Schema)
+					{
+						std::vector<std::pair<NodeId, glm::vec2>> moved;
+						for (const auto& [id, start] : m_DragStart)
+							for (const ViewNode& node : m_View.Nodes)
+								if (node.Id == id)
+									moved.push_back({ id, node.Position });
+						m_Schema->OnNodesMoved(moved);
+					}
 					SaveViewState();
+				}
 			}
 			EndInteraction();
 			return Reply::Handled_().ReleaseCapture();
@@ -448,6 +481,8 @@ namespace graph {
 	Reply GraphCanvas::OnKeyDown(int key, int mods)
 	{
 		(void)mods;
+		if (m_Schema && m_Schema->OnKey(key))
+			return Reply::Handled_();
 		if (key == TE_KEY_HOME)
 		{
 			FrameAll();
@@ -559,7 +594,10 @@ namespace graph {
 
 			const bool hoverIncident = m_HasHover && (edge.From == m_HoveredNode || edge.To == m_HoveredNode);
 			glm::vec4 colour;
-			if (hoverIncident)
+			const bool highlighted = (edge.Flags & EdgeFlags::Highlighted) != 0;
+			if (highlighted)
+				colour = tokens::Accent;
+			else if (hoverIncident)
 				colour = kEdgeHover;
 			else if (edge.Flags & EdgeFlags::BackEdge)
 				colour = kEdgeBack;
@@ -567,7 +605,7 @@ namespace graph {
 				colour = (edge.Flags & EdgeFlags::Outgoing) ? kEdgeOutgoing : kEdgeIncoming;
 
 			const LineStyle stroke = (edge.Kind == EdgeKind::Soft) ? LineStyle::Dashed : LineStyle::Solid;
-			dl.AddPolyline(layer, points, hoverIncident ? thickness + 0.8f : thickness, colour, clip, stroke);
+			dl.AddPolyline(layer, points, highlighted ? thickness + 1.5f : hoverIncident ? thickness + 0.8f : thickness, colour, clip, stroke);
 		}
 	}
 
@@ -812,6 +850,8 @@ namespace graph {
 
 	void GraphCanvas::BeginInteraction(Interaction i, const glm::vec2& anchor)
 	{
+		if (i == Interaction::PanMiddle || i == Interaction::PanRightPending || i == Interaction::NodeDrag)
+			m_AutoFrame = false;
 		m_Interaction = i;
 		m_Anchor = anchor - m_Origin;
 		m_AnchorScreen = anchor;

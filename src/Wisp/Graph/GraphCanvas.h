@@ -135,6 +135,10 @@ namespace graph {
 		mutable ViewTransform m_Transform;
 		mutable bool m_NeedsRebuild = true;
 		mutable bool m_FirstBuild = true;
+		// Until the user moves the view, a new viewport size (the panel
+		// docked, resized, first laid out) frames the graph again.
+		mutable bool m_AutoFrame = true;
+		mutable glm::vec2 m_FramedSize{ 0.0f };
 		mutable float m_DpiScale = 1.0f;
 		mutable glm::vec2 m_Origin{};
 		mutable glm::vec2 m_Size{};

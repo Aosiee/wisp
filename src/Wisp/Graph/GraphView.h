@@ -36,6 +36,7 @@ namespace graph {
 	{
 		BackEdge = 1 << 0, // the head is at the same or a closer column than the tail (cycles, cross-links)
 		Outgoing = 1 << 1, // the reference direction away from the root (else incoming)
+		Highlighted = 1 << 2, // the schema's selected edge (drawn in the accent, thicker)
 	};
 
 	struct ViewNode

@@ -14,6 +14,9 @@
 #include "Wisp/Graph/GraphLayout.h"
 #include "Wisp/Graph/GraphView.h"
 
+#include <utility>
+#include <vector>
+
 namespace wisp {
 namespace graph {
 
@@ -42,6 +45,16 @@ namespace graph {
 
 		virtual bool NodesMovable() const { return false; }
 		virtual bool PersistPositions() const { return false; }
+		// An editing schema's hooks (a viewer leaves them be): the nodes a
+		// drag moved and where (graph space), a click on an edge (its index
+		// in the view), a click on the empty canvas, a right-click there
+		// (the graph-space point and the screen point for a menu), and a key
+		// the canvas has focus for (true = handled).
+		virtual void OnNodesMoved(const std::vector<std::pair<NodeId, glm::vec2>>&) {}
+		virtual void OnEdgeClick(size_t) {}
+		virtual void OnBackgroundClick() {}
+		virtual void ShowBackgroundMenu(const glm::vec2&, const glm::vec2&) {}
+		virtual bool OnKey(int) { return false; }
 	};
 
 } // namespace graph
