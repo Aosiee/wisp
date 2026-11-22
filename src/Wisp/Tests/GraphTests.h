@@ -620,6 +620,71 @@ namespace graph_tests {
 		CHECK(framed.Pan == glm::vec2(0.0f));
 	}
 
+	TEST_CASE("graph view: straight edges run border to border, each with its own point on a node's side")
+	{
+		GraphView view;
+		view.Shape = EdgeShape::Straight;
+		ViewNode a;
+		a.Id = 1;
+		a.Position = { 0.0f, 0.0f };
+		a.Size = { 100.0f, 40.0f };
+		ViewNode b = a;
+		b.Id = 2;
+		b.Position = { 300.0f, 0.0f };
+		ViewNode c = a;
+		c.Id = 3;
+		c.Position = { 0.0f, 200.0f };
+		view.Nodes = { a, b, c };
+		view.Edges = { { 1, 2 }, { 2, 1 }, { 1, 3 }, { 1, 3 }, { 3, 2 } };
+
+		glm::vec2 p0, p1, p2, p3;
+		// c -> b leaves c through its top edge, which a -> c twice meets too:
+		// ordered by where their other ends lie, it takes the third point,
+		// one spacing right of the centre line's exit (80).
+		EdgeControlPoints(view, 4, p0, p1, p2, p3);
+		CHECK(EdgeLane(view, 4) == 0);
+		CHECK(p0.y == doctest::Approx(200.0f));
+		CHECK(p0.x == doctest::Approx(94.0f));
+		CHECK(p1 == glm::mix(p0, p3, 1.0f / 3.0f));
+
+		// A two-way pair: each on the right of its own direction, so the two
+		// lines run parallel and apart.
+		CHECK(EdgeLane(view, 0) == 1);
+		CHECK(EdgeLane(view, 1) == 1);
+		glm::vec2 q0, q1, q2, q3;
+		EdgeControlPoints(view, 0, p0, p1, p2, p3);
+		EdgeControlPoints(view, 1, q0, q1, q2, q3);
+		CHECK(p0.x == doctest::Approx(100.0f));
+		CHECK(p3.x == doctest::Approx(300.0f));
+		CHECK(p0.y == doctest::Approx(27.0f)); // right of +x is +y
+		CHECK(p3.y == doctest::Approx(27.0f));
+		CHECK(q0.y == doctest::Approx(13.0f));
+
+		// Repeated edges in one direction: lanes 1 and 2.
+		CHECK(EdgeLane(view, 2) == 1);
+		CHECK(EdgeLane(view, 3) == 2);
+		EdgeControlPoints(view, 2, p0, p1, p2, p3);
+		EdgeControlPoints(view, 3, q0, q1, q2, q3);
+		CHECK(std::abs(p0.x - q0.x) == doctest::Approx(14.0f));
+		CHECK(std::abs(p3.x - q3.x) == doctest::Approx(14.0f)); // parallel, not crossing
+	}
+
+	TEST_CASE("graph canvas: the frame transform keeps to its zoom range")
+	{
+		GraphView view;
+		ViewNode node;
+		node.Id = 1;
+		node.Size = { 2000.0f, 100.0f };
+		view.Nodes = { node };
+		// Too wide for the viewport at any level the range allows: the floor.
+		CHECK(FrameTransform(view, {}, { 400.0f, 300.0f }, 6, 10).ZoomLevel == 6);
+		CHECK(FrameTransform(view, {}, { 400.0f, 300.0f }).ZoomLevel < 6);
+		// A small graph is not blown up past the ceiling.
+		view.Nodes[0].Size = { 20.0f, 10.0f };
+		CHECK(FrameTransform(view, {}, { 400.0f, 300.0f }, 6, 10).ZoomLevel == 10);
+		CHECK(FrameTransform(view, {}, { 400.0f, 300.0f }).ZoomLevel == 14);
+	}
+
 	TEST_CASE("graph view: the same-row edge control points lift the curve")
 	{
 		// Two nodes at the same row: the edge must lift its middle (the
@@ -785,6 +850,73 @@ namespace graph_tests {
 			}
 		}
 		CHECK(foundAggregate);
+	}
+
+	TEST_CASE("graph: the edge hover finds the nearest edge in its band")
+	{
+		GraphView view;
+		view.Shape = EdgeShape::Straight;
+		ViewNode a; a.Id = 1; a.Position = { 0.0f, 0.0f }; a.Size = { 100.0f, 40.0f };
+		ViewNode b; b.Id = 2; b.Position = { 300.0f, 0.0f }; b.Size = { 100.0f, 40.0f };
+		ViewNode c; c.Id = 3; c.Position = { 300.0f, 200.0f }; c.Size = { 100.0f, 40.0f };
+		view.Nodes = { a, b, c };
+		ViewEdge ab; ab.From = 1; ab.To = 2;
+		ViewEdge ac; ac.From = 1; ac.To = 3;
+		view.Edges = { ab, ac };
+		// On the a -> b line (y = 20), 3 units off it.
+		CHECK(NearestEdge(view, { 200.0f, 23.0f }, 6.0f) == 0);
+		// Far from both.
+		CHECK(NearestEdge(view, { 200.0f, 300.0f }, 6.0f) == -1);
+	}
+
+	TEST_CASE("graph: the rim, the snap and the border point")
+	{
+		ViewNode node; node.Position = { 0.0f, 0.0f }; node.Size = { 100.0f, 50.0f };
+		CHECK(InNodeRim(node, { 3.0f, 25.0f }, 8.0f));
+		CHECK(InNodeRim(node, { 50.0f, 46.0f }, 8.0f));
+		CHECK_FALSE(InNodeRim(node, { 50.0f, 25.0f }, 8.0f)); // the middle
+		CHECK_FALSE(InNodeRim(node, { -3.0f, 25.0f }, 8.0f)); // outside
+		CHECK(SnapToGrid({ 23.0f, -9.0f }, 16.0f) == glm::vec2(16.0f, -16.0f));
+		CHECK(SnapToGrid({ 23.0f, -9.0f }, 0.0f) == glm::vec2(23.0f, -9.0f));
+		const glm::vec2 right = NodeBorderPoint(node, { 500.0f, 25.0f });
+		CHECK(right.x == doctest::Approx(100.0f));
+		CHECK(right.y == doctest::Approx(25.0f));
+		const glm::vec2 up = NodeBorderPoint(node, { 50.0f, -400.0f });
+		CHECK(up.y == doctest::Approx(0.0f));
+	}
+
+	TEST_CASE("graph: the minimap fits the nodes and the view, aspect kept")
+	{
+		GraphView view;
+		ViewNode a; a.Id = 1; a.Position = { 0.0f, 0.0f }; a.Size = { 100.0f, 50.0f };
+		ViewNode b; b.Id = 2; b.Position = { 900.0f, 250.0f }; b.Size = { 100.0f, 50.0f };
+		view.Nodes = { a, b };
+		// The view covers only the left part: the bounds are the nodes'.
+		const MinimapLayout layout = ComputeMinimap(view, { 0.0f, 0.0f, 400.0f, 200.0f }, { 200.0f, 200.0f });
+		REQUIRE(layout.Valid);
+		CHECK(layout.WorldMin == glm::vec2(0.0f));
+		CHECK(layout.Scale == doctest::Approx(0.2f)); // 1000 wide into 200
+		CHECK(layout.Size.x == doctest::Approx(200.0f));
+		CHECK(layout.Size.y == doctest::Approx(60.0f));
+		// A view reaching past the nodes widens the bounds, by a margin at most.
+		const MinimapLayout wide = ComputeMinimap(view, { -100.0f, 0.0f, 400.0f, 200.0f }, { 200.0f, 200.0f });
+		CHECK(wide.WorldMin.x == doctest::Approx(-100.0f));
+		const MinimapLayout far = ComputeMinimap(view, { -5000.0f, 0.0f, 400.0f, 200.0f }, { 200.0f, 200.0f });
+		CHECK(far.WorldMin.x == doctest::Approx(-190.0f)); // 15% of 1000 + 40
+		CHECK_FALSE(ComputeMinimap(GraphView{}, { 0.0f, 0.0f, 1.0f, 1.0f }, { 10.0f, 10.0f }).Valid);
+	}
+
+	TEST_CASE("graph: a polyline prefix ends where its share of the length does")
+	{
+		const std::vector<glm::vec2> line = { { 0.0f, 0.0f }, { 10.0f, 0.0f }, { 10.0f, 10.0f } };
+		const std::vector<glm::vec2> half = PolylinePrefix(line, 0.5f);
+		REQUIRE(half.size() == 2);
+		CHECK(half.back() == glm::vec2(10.0f, 0.0f));
+		const std::vector<glm::vec2> quarter = PolylinePrefix(line, 0.25f);
+		CHECK(quarter.back() == glm::vec2(5.0f, 0.0f));
+		const std::vector<glm::vec2> all = PolylinePrefix(line, 2.0f);
+		CHECK(all.back() == glm::vec2(10.0f, 10.0f));
+		CHECK(PolylinePrefix({}, 0.5f).empty());
 	}
 
 } // namespace graph_tests

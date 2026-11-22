@@ -39,8 +39,11 @@ namespace graph {
 
 	// The transform that frames the nodes (the empty subset = all) in a
 	// viewport, choosing the largest zoom level that fits (Home/F).
+	// The pan and zoom showing `subset` (empty: every node) in the viewport,
+	// at the largest zoom level in [minLevel, maxLevel] that fits; a graph
+	// too big for minLevel is centred at it.
 	ViewTransform FrameTransform(const GraphView& view, const std::vector<NodeId>& subset,
-		const glm::vec2& viewportSize);
+		const glm::vec2& viewportSize, int minLevel = 0, int maxLevel = 14);
 
 	class GraphCanvas : public Widget
 	{
@@ -57,7 +60,23 @@ namespace graph {
 		void FrameSelection();
 
 		void SetDrawDotGrid(bool b) { m_DrawDotGrid = b; }
+		// The zoom levels framing may pick (kZoomLevels indices): a floor
+		// keeps a framed graph legible in a narrow viewport, a ceiling keeps
+		// a small graph from being blown up.
+		void SetFrameZoomRange(int minLevel, int maxLevel) { m_FrameZoomMin = minLevel; m_FrameZoomMax = maxLevel; }
 		void SetViewStateKey(const std::string& key) { m_ViewStateKey = key; }
+		// The minimap in the bottom-right corner, shown while the graph
+		// reaches past the view (click or drag in it to move the view).
+		void SetShowMinimap(bool b) { m_ShowMinimap = b; }
+		bool GetShowMinimap() const { return m_ShowMinimap; }
+		// The smallest title size in logical pixels: zoomed out, titles stay
+		// readable (the subtitles drop first). 0 = they scale with the zoom.
+		void SetMinTitlePixels(float px) { m_MinTitlePx = px; }
+
+		// A window-absolute point in graph space, and the mouse's.
+		glm::vec2 ScreenToGraph(const glm::vec2& absPos) const { return ScreenToWorld(absPos); }
+		glm::vec2 MouseGraphPosition() const;
+		std::vector<NodeId> GetSelectedNodes() const;
 
 		const ViewTransform& GetTransform() const { return m_Transform; }
 		void SetTransform(const ViewTransform& t) { m_Transform = t; }
@@ -73,9 +92,13 @@ namespace graph {
 		Reply OnMouseButtonUp(const glm::vec2& absPos, int button) override;
 		Reply OnMouseMove(const glm::vec2& absPos) override;
 		Reply OnKeyDown(int key, int mods) override;
+		Reply OnDragEnter(DragOperation& op) override;
+		Reply OnDragOver(DragOperation& op) override;
+		Reply OnDragLeave(DragOperation& op) override;
+		Reply OnDrop(DragOperation& op) override;
 
 	private:
-		enum class Interaction : uint8_t { None, PanMiddle, PanRightPending, PanRightDrag, Marquee, NodeDrag };
+		enum class Interaction : uint8_t { None, PanMiddle, PanRightPending, PanRightDrag, Marquee, NodeDrag, Connect, Minimap };
 
 		// The screen-space mapping: screen = origin + world * scale + pan.
 		glm::vec2 WorldToScreen(const glm::vec2& world) const { return m_Origin + world * ZoomScale(m_Transform.ZoomLevel) + m_Transform.Pan; }
@@ -88,6 +111,12 @@ namespace graph {
 			return std::max(1, (int)std::lround(baseSize * ZoomScale(m_Transform.ZoomLevel)
 				* std::max(0.5f, m_DpiScale)));
 		}
+		// The title's pixel size: the zoomed size, or the floor when larger.
+		int TitlePixels() const
+		{
+			return std::max(QuantizedTextSize(m_BaseTitleSize), (int)std::lround(m_MinTitlePx * std::max(0.5f, m_DpiScale)));
+		}
+		bool TitleFloored() const { return TitlePixels() > QuantizedTextSize(m_BaseTitleSize); }
 
 		// The readability floor: below ~6 px the titles are sub-pixel, so
 		// the title tier skips them.
@@ -97,10 +126,24 @@ namespace graph {
 		void PaintDotGrid(DrawList& dl, int layer, int clip, const glm::vec4& worldClip) const;
 		void PaintEdges(DrawList& dl, int layer, int clip, const glm::vec4& worldClip, const glm::vec2& viewport) const;
 		void PaintArrowheads(DrawList& dl, int layer, int clip, const glm::vec2& viewport) const;
+		// Straight edges' labels, as chips that cover no card and no other chip.
+		void PaintEdgeLabels(DrawList& dl, int layer, int clip) const;
 		void PaintNodes(DrawList& dl, int layer, int clip, const glm::vec4& worldClip) const;
 		void PaintMarquee(DrawList& dl, int layer, int clip) const;
+		void PaintConnect(DrawList& dl, int layer, int clip) const;
+		void PaintOverlays(DrawList& dl, int layer, int clip, const glm::vec4& worldClip) const;
 		void PaintTextScaled(DrawList& dl, int layer, int clip, const glm::vec2& at, float baseSize,
 			const std::string& text, const glm::vec4& colour) const;
+		void PaintTextPixels(DrawList& dl, int layer, int clip, const glm::vec2& at, int pixels,
+			const std::string& text, const glm::vec4& colour) const;
+		// An edge's colour and stroke width at rest, hovered, selected.
+		glm::vec4 EdgeColour(size_t edgeIndex) const;
+		const ViewNode* FindViewNode(NodeId id) const;
+		// The rim width in graph units for a node (a connect drag starts there).
+		float RimWidth(const ViewNode& node) const;
+		void PanMinimapTo(const glm::vec2& absPos);
+		void NotifySelection();
+		bool AcceptsDrag(const DragOperation* op) const;
 		void UpdateHover() const;
 
 		// The screen-space edge control points via the node index map
@@ -145,6 +188,8 @@ namespace graph {
 		mutable bool m_HasCachedGeometry = false;
 		mutable NodeId m_HoveredNode = 0;
 		mutable bool m_HasHover = false;
+		mutable int m_HoveredEdge = -1;
+		mutable bool m_HoverRim = false; // the hovered node's rim (a connect drag starts there)
 		mutable glm::vec2 m_LastPolledMouse{ -1e9f, -1e9f };
 
 		// The per-build and per-transform caches (the 500-node budget:
@@ -159,10 +204,16 @@ namespace graph {
 		mutable std::unordered_map<NodeId, std::pair<int, std::string>> m_TitleCache;
 		mutable std::unordered_map<NodeId, std::pair<int, std::string>> m_SubtitleCache;
 
-		std::unordered_set<NodeId> m_Selected;
+		mutable std::unordered_set<NodeId> m_Selected; // a rebuild re-seeds it from the view's flags
 		bool m_DrawDotGrid = false;
+		bool m_ShowMinimap = false;
+		float m_MinTitlePx = 0.0f;
+		mutable glm::vec4 m_MinimapRect{ 0.0f }; // screen x, y, w, h (zero = hidden)
+		mutable MinimapLayout m_Minimap;
 		float m_BaseTitleSize = 13.0f;
 		float m_BaseSubtitleSize = 11.0f;
+		int m_FrameZoomMin = 0;
+		int m_FrameZoomMax = 14;
 
 		// The interaction state (the events arrive window-absolute; the
 		// origin/size are cached by the last paint - the profiler pattern).
@@ -173,6 +224,10 @@ namespace graph {
 		glm::vec2 m_AnchorScreen{};
 		glm::vec2 m_LastMouse{};
 		bool m_MovedPastThreshold = false;
+		bool m_CtrlAtDown = false;
+		bool m_PressedSelected = false; // pressed a node of a group: the drag moves the group
+		NodeId m_ConnectFrom = 0;
+		NodeId m_ConnectTarget = 0;
 		double m_LastClickTime = -1e9;
 		NodeId m_LastClickNode = 0;
 	};

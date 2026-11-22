@@ -168,7 +168,7 @@ TEST_CASE("wisp tokens: the icon colours read at 3:1 on the panel surfaces")
 		{ "TypeScene", tokens::TypeScene }, { "TypeMesh", tokens::TypeMesh }, { "TypeMaterial", tokens::TypeMaterial },
 		{ "TypeTexture", tokens::TypeTexture }, { "TypeShader", tokens::TypeShader }, { "TypeScript", tokens::TypeScript },
 		{ "TypeFont", tokens::TypeFont }, { "TypeAudio", tokens::TypeAudio }, { "TypeInput", tokens::TypeInput },
-		{ "TypeCubemap", tokens::TypeCubemap }, { "TypeOther", tokens::TypeOther },
+		{ "TypeCubemap", tokens::TypeCubemap }, { "TypeOther", tokens::TypeOther }, { "TypeAnimation", tokens::TypeAnimation },
 	};
 	for (const Named& i : icons)
 		for (const glm::vec4& surface : { tokens::Panel, tokens::Raised, tokens::Field })

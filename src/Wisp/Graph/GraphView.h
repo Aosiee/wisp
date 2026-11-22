@@ -30,6 +30,9 @@ namespace graph {
 		BothSides    = 1 << 3, // reachable as both a dependency and a dependent
 		Root         = 1 << 4,
 		OverflowLeft = 1 << 5, // the Overflow node whose hidden children sit on the dependency side
+		Active       = 1 << 6, // live (a playing state): a lit outline and a glow
+		NodeWarning  = 1 << 7, // a badge in the corner (the schema's tooltip says why)
+		Pill         = 1 << 8, // fully rounded ends (an entry or an any-state marker)
 	};
 
 	enum EdgeFlags : uint32_t
@@ -37,6 +40,8 @@ namespace graph {
 		BackEdge = 1 << 0, // the head is at the same or a closer column than the tail (cycles, cross-links)
 		Outgoing = 1 << 1, // the reference direction away from the root (else incoming)
 		Highlighted = 1 << 2, // the schema's selected edge (drawn in the accent, thicker)
+		Emphasis = 1 << 3, // drawn in the accent at rest (an entry arrow)
+		EdgeWarning = 1 << 4, // drawn in the warning colour (the schema's tooltip says why)
 	};
 
 	struct ViewNode
@@ -57,12 +62,20 @@ namespace graph {
 		NodeId From = 0, To = 0;
 		EdgeKind Kind = EdgeKind::Hard;
 		uint32_t Flags = 0;
+		std::string Label; // drawn as a chip at the middle of a Straight edge
 	};
+
+	// Curved: the column layout's right-edge-to-left-edge beziers (the
+	// reference graphs). Straight: border-to-border lines between the nodes,
+	// the edges meeting one side of a node spread along it (state machines,
+	// where nodes sit anywhere and transitions run both ways).
+	enum class EdgeShape : uint8_t { Curved, Straight };
 
 	struct GraphView
 	{
 		std::vector<ViewNode> Nodes;
 		std::vector<ViewEdge> Edges;
+		EdgeShape Shape = EdgeShape::Curved;
 	};
 
 	// The discrete zoom table: continuous zoom would rasterize every glyph
@@ -105,8 +118,43 @@ namespace graph {
 	void EdgeControlPoints(const GraphView& view, size_t edgeIndex,
 		glm::vec2& p0, glm::vec2& p1, glm::vec2& p2, glm::vec2& p3);
 
+	// A Straight edge's lane: 0 when it is the only edge between its two
+	// nodes, else 1, 2, ... - its label is pushed to the right of its
+	// direction. (The lines themselves stay apart because every edge meeting
+	// a node's side gets its own point on it.)
+	int EdgeLane(const GraphView& view, size_t edgeIndex);
+
 	// The distance from the point to the bezier (the sampled polyline).
 	float EdgeDistance(const GraphView& view, size_t edgeIndex, glm::vec2 point, int samples);
+
+	// The nearest edge within `band` of a graph-space point; -1 when none.
+	int NearestEdge(const GraphView& view, glm::vec2 world, float band);
+
+	// Where the line from the node's centre toward `toward` leaves its rect.
+	glm::vec2 NodeBorderPoint(const ViewNode& node, const glm::vec2& toward);
+
+	// Inside the node and within `rim` of its border (where a connect drag
+	// starts).
+	bool InNodeRim(const ViewNode& node, glm::vec2 world, float rim);
+
+	// The point on the grid nearest `p` (a grid of 0 leaves it).
+	glm::vec2 SnapToGrid(glm::vec2 p, float grid);
+
+	// The minimap's mapping: the nodes' bounds, widened toward the visible
+	// rect (x, y, w, h) by at most a margin, fitted into `maxSize` with the
+	// aspect kept.
+	// minimap = (world - WorldMin) * Scale.
+	struct MinimapLayout
+	{
+		bool Valid = false;
+		glm::vec2 WorldMin{};
+		float Scale = 1.0f;
+		glm::vec2 Size{};
+	};
+	MinimapLayout ComputeMinimap(const GraphView& view, const glm::vec4& visibleWorld, glm::vec2 maxSize);
+
+	// The first `fraction` of a polyline by length, and the point it ends at.
+	std::vector<glm::vec2> PolylinePrefix(const std::vector<glm::vec2>& points, float fraction);
 
 } // namespace graph
 } // namespace wisp

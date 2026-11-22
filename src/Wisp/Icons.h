@@ -120,6 +120,10 @@ inline constexpr const char* Star = "\xEE\x81\xAA";
 inline constexpr const char* Bookmark = "\xEE\x81\xAB";
 inline constexpr const char* Download = "\xEE\x81\xAC";
 inline constexpr const char* Hand = "\xEE\x81\xAD";
+inline constexpr const char* Bone = "\xEE\x81\xAE";
+inline constexpr const char* Footprints = "\xEE\x81\xAF";
+inline constexpr const char* Crosshair = "\xEE\x81\xB0";
+inline constexpr const char* StateMachine = "\xEE\x81\xB1";
 
 // The codepoints, for code that rasterizes one glyph directly.
 namespace cp {
@@ -234,6 +238,10 @@ inline constexpr uint32_t Star = 0xE06A;
 inline constexpr uint32_t Bookmark = 0xE06B;
 inline constexpr uint32_t Download = 0xE06C;
 inline constexpr uint32_t Hand = 0xE06D;
+inline constexpr uint32_t Bone = 0xE06E;
+inline constexpr uint32_t Footprints = 0xE06F;
+inline constexpr uint32_t Crosshair = 0xE070;
+inline constexpr uint32_t StateMachine = 0xE071;
 
 } // namespace cp
 

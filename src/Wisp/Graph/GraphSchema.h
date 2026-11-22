@@ -10,10 +10,12 @@
 
 #pragma once
 
+#include "Wisp/Core.h"
 #include "Wisp/DrawList.h"
 #include "Wisp/Graph/GraphLayout.h"
 #include "Wisp/Graph/GraphView.h"
 
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -53,8 +55,40 @@ namespace graph {
 		virtual void OnNodesMoved(const std::vector<std::pair<NodeId, glm::vec2>>&) {}
 		virtual void OnEdgeClick(size_t) {}
 		virtual void OnBackgroundClick() {}
+		// A double-click on empty canvas, at its graph-space position.
+		virtual void OnBackgroundActivate(const glm::vec2&) {}
 		virtual void ShowBackgroundMenu(const glm::vec2&, const glm::vec2&) {}
 		virtual bool OnKey(int) { return false; }
+
+		// One node's drag (default: every node or none, NodesMovable).
+		virtual bool NodeMovable(NodeId) const { return NodesMovable(); }
+		// Snapped node drags and the arrow-key nudge step (0 = free).
+		virtual float SnapGrid() const { return 0.0f; }
+		// The selection the canvas changed (a marquee, Ctrl+click, Ctrl+A,
+		// Escape). A schema owning the selection flags the nodes Selected in
+		// its next Build; a rebuild keeps the flagged nodes selected.
+		virtual void OnSelectionChanged(const std::vector<NodeId>&) {}
+
+		// Connecting: a drag from a node's rim (or a Shift+drag) to another
+		// node, drawn as a rubber band.
+		virtual bool CanStartConnect(NodeId) const { return false; }
+		virtual bool CanConnect(NodeId, NodeId) const { return true; }
+		virtual void OnConnect(NodeId, NodeId) {}
+
+		virtual std::string EdgeTooltipText(size_t) const { return {}; }
+		// Live state read at every paint (no rebuild per frame): a fill
+		// running along the edge (0..1, below 0 none) and a fading glow (0..1).
+		virtual float EdgeProgress(size_t) const { return -1.0f; }
+		virtual float EdgeFlash(size_t) const { return 0.0f; }
+
+		// The path drawn in the canvas's top-left corner (the last segment
+		// brightest).
+		virtual std::vector<std::string> Breadcrumb() const { return {}; }
+
+		// A drag-and-drop payload dropped on the canvas, at its graph-space
+		// point.
+		virtual bool AcceptsDrop(const DragPayload&) const { return false; }
+		virtual void OnDrop(const DragPayload&, const glm::vec2&) {}
 	};
 
 } // namespace graph

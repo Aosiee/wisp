@@ -120,6 +120,26 @@ public:
 		Trace("OpenPanel " + id);
 	}
 
+	// Opens a panel as a tab in the well that holds `anchor` (a wide document
+	// editor beside the Viewport rather than in the first side well). An
+	// already-open singleton is just fronted where it is; without the anchor
+	// it falls back to OpenPanel.
+	void OpenPanelBeside(const dock::PanelId& id, const dock::PanelId& anchor)
+	{
+		auto defIt = m_Registry.find(id);
+		if (defIt == m_Registry.end()) return;
+		const dock::NodeId anchorWell = FindPanelWell(anchor);
+		if (anchorWell == 0 || (defIt->second.Singleton && FindPanelWell(id) != 0))
+		{
+			OpenPanel(id);
+			return;
+		}
+		dock::InsertTab(m_Model, anchorWell, id, -1, defIt->second.Singleton);
+		dock::SetActiveTab(m_Model, anchorWell, (int)dock::FindNode(m_Model, anchorWell)->Tabs.size() - 1);
+		ActivatePanel(id);
+		Trace("OpenPanelBeside " + id + " " + anchor);
+	}
+
 	void ClosePanel(const dock::PanelId& id)
 	{
 		auto defIt = m_Registry.find(id);

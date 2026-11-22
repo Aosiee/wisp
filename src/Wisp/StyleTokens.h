@@ -86,6 +86,7 @@ inline constexpr glm::vec4 TypeScript    = Hex(0xE0C341);
 inline constexpr glm::vec4 TypeFont      = Hex(0x8C9DB8);
 inline constexpr glm::vec4 TypeAudio     = Hex(0xEE7A42);
 inline constexpr glm::vec4 TypeInput     = Hex(0xD566B0);
+inline constexpr glm::vec4 TypeAnimation = Hex(0x7F8CF5);
 inline constexpr glm::vec4 TypeCubemap   = Hex(0xE6B653);
 inline constexpr glm::vec4 TypeOther     = Hex(0x8A8A93);
 
