@@ -30,7 +30,7 @@ set(WISP_HAMR_DIR "" CACHE PATH "A hamr checkout, for the suite's test library (
 # The pinned dependencies: Hearth (the host seam and the platform), tmath
 # (and glm through it), RapidJSON (the dock layout's files), stb_truetype
 # (the glyph rasterizer) and hamr's C++ test library for the suite.
-set(WISP_HEARTH_COMMIT d0353e62f25a9f340cbf4ddd9deb9a6fb083c4a0) # Hearth 0.1.0 (v0.1.0)
+set(WISP_HEARTH_COMMIT 85cfe666d21c15c115f73c4aeec2ec0bceda84fc) # Hearth 0.1.1 (v0.1.1)
 set(WISP_TMATH_COMMIT 20226ccfd033d66985a720da5028b5887c74ee74) # tmath 0.1.0 (v0.1.0)
 set(WISP_RAPIDJSON_COMMIT 24b5e7a8b27f42fa16b96fc70aade9106cf7102f)
 set(WISP_STB_COMMIT 6b5799bae8a1fe3792691ef4b72ae26434c3e799)
