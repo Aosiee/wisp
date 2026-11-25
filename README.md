@@ -33,6 +33,40 @@ and knows nothing about it.
   (`Wisp/Rhi/RhiFrameClient.h`, a window's UI as one of its
   `hearth::rhi::WindowPresenter`'s frame clients: the update, then a pass
   over the swapchain). `-DWISP_RHI=OFF` leaves it out.
+- **`wisp::fonts`** - the house faces built in: JetBrains Mono (Regular,
+  Medium, SemiBold) and TinyIcons, the icon font `Wisp/Icons.h` names
+  (`Wisp/Fonts/HouseFaces.h`: `AddHouseFaces`, `ApplyHouseFaces`).
+- **`wisp::applet`** - Wisp as a program of its own, on
+  [Hearth](https://github.com/Aosiee/hearth)'s `hearth::App`
+  (`Wisp/Applet/Applet.h`): the renderer, the main window's frame client,
+  the platform's events routed to Wisp, the dock's torn-out windows, and an
+  input script for scripted captures. `wisp_gallery` (`gallery/`) is the
+  sample: every base widget, the dock with a panel in a second window, the
+  code editor, a graph canvas, the charts and the document view.
+
+## An applet
+
+The quickest Wisp program is an applet: Hearth opens the window (or draws
+offscreen), Wisp fills it.
+
+```cpp
+#include "Wisp/Applet/Applet.h"
+
+int main(int argc, char** argv)
+{
+    hearth::App app(hearth::App::ParseArgs(argc, argv, { .Title = "Hello", .Width = 640, .Height = 400 }));
+    wisp::Applet ui(app);
+    ui.AddHouseFaces();
+    ui.SetRoot(BuildMyUi());
+    return app.Run();
+}
+```
+
+Every applet takes Hearth's flags; offscreen it captures itself:
+
+```sh
+wisp_gallery --display-mode offscreen --render-target 1280x800 --capture-ui gallery.png
+```
 
 ## What the program supplies
 
@@ -110,6 +144,8 @@ there by CI; when enough has gathered, `dev` becomes the next release. See
 ## License
 
 The Wisp License: MIT-style, with one condition: a product that includes
-Wisp credits it in its credits or about box. See [LICENSE](LICENSE). The
-suite's test face, Adwaita Mono, is under the SIL Open Font License
-([tests/fonts/LICENSE.txt](tests/fonts/LICENSE.txt)).
+Wisp credits it in its credits or about box. See [LICENSE](LICENSE).
+TinyIcons is Wisp's, under the same license. JetBrains Mono, built into
+`wisp::fonts`, and the suite's test face, Adwaita Mono, are under the SIL
+Open Font License ([fonts/ttf/JetBrainsMono-OFL.txt](fonts/ttf/JetBrainsMono-OFL.txt),
+[tests/fonts/LICENSE.txt](tests/fonts/LICENSE.txt)).

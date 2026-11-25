@@ -1,7 +1,8 @@
 # Builds Wisp and runs its suite in each configuration it is checked in:
 # GCC and Clang, Debug and Release, without the debug tools, and the
-# address and undefined-behaviour sanitizers; wisp::rhi's GPU case on Mesa's
-# lavapipe; and the committed UI shader SPIR-V against the GLSL.
+# address and undefined-behaviour sanitizers; the GPU cases and the gallery's
+# offscreen capture on Mesa's lavapipe; and the committed UI shader SPIR-V
+# and built-in faces against their sources.
 #
 # hamr (the suite's test library) is checked out at the commit
 # CMakeLists.txt pins; Hearth, tmath, RapidJSON and stb (and, through them,
@@ -84,8 +85,31 @@ jobs:
         if: "!contains(matrix.flags, 'WISP_SANITIZE')"
         run: timeout 10m build/wisp_rhi_gpu_tests
 
+      # The gallery offscreen, twice: each run must capture (exit 0 and a
+      # sidecar), and the two captures must be the same pixels.
+      - name: Gallery capture
+        if: "!contains(matrix.flags, 'WISP_SANITIZE')"
+        run: |
+          for run in 1 2; do
+            timeout 5m build/wisp_gallery --display-mode offscreen --render-target 1280x800 \
+              --capture-ui "gallery-$run.png" --min-frames 30 --frames 300
+            test -s "gallery-$run.png.json"
+          done
+          hash() { sed -n 's/.*"blake3": "\([0-9a-f]*\)".*/\1/p' "$1"; }
+          echo "gallery: $(hash gallery-1.png.json)"
+          test -n "$(hash gallery-1.png.json)"
+          test "$(hash gallery-1.png.json)" = "$(hash gallery-2.png.json)"
+
+      - name: Keep the gallery capture
+        if: "!contains(matrix.flags, 'WISP_SANITIZE') && always()"
+        uses: actions/upload-artifact@v4
+        with:
+          name: gallery ${{ matrix.name }}
+          path: gallery-*.png*
+          if-no-files-found: ignore
+
   shaders:
-    name: shader SPIR-V
+    name: shader SPIR-V and faces
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
@@ -97,3 +121,7 @@ jobs:
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DWISP_BUILD_TESTS=OFF -DWISP_SHADER_TOOLS=ON \
             -DHEARTH_NULL_PLATFORM_ONLY=ON
           cmake --build build -j "$(nproc)" --target wisp_shaders_check
+
+      # The built-in faces' arrays against fonts/ttf/.
+      - name: Faces
+        run: cmake -DMODE=check -P fonts/Embed.cmake

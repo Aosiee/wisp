@@ -37,7 +37,7 @@ set(WISP_GLSLANG_DIR "" CACHE PATH "A glslang checkout, for the shader tools (em
 # wisp::rhi, the GPU layer and its window presenter), tmath
 # (and glm through it), RapidJSON (the dock layout's files), stb_truetype
 # (the glyph rasterizer) and hamr's C++ test library for the suite.
-set(WISP_HEARTH_COMMIT 3ecc667823ba792343b4a803ff0b99177c4abac3) # Hearth 0.3.0 (v0.3.0)
+set(WISP_HEARTH_COMMIT c4f074270e833b976f31a8a27fae7463f97f2cdb) # Hearth 0.5.0 (v0.5.0)
 set(WISP_TMATH_COMMIT 20226ccfd033d66985a720da5028b5887c74ee74) # tmath 0.1.0 (v0.1.0)
 set(WISP_RAPIDJSON_COMMIT 24b5e7a8b27f42fa16b96fc70aade9106cf7102f)
 set(WISP_STB_COMMIT 6b5799bae8a1fe3792691ef4b72ae26434c3e799)
@@ -71,7 +71,7 @@ endfunction()
 if(NOT TARGET tmath::tmath)
     wisp_project_of(tmath https://github.com/Aosiee/tmath.git ${WISP_TMATH_COMMIT} WISP_TMATH_DIR)
 endif()
-if(NOT TARGET hearth::platform)
+if(NOT TARGET hearth::app)
     wisp_project_of(hearth https://github.com/Aosiee/hearth.git ${WISP_HEARTH_COMMIT} WISP_HEARTH_DIR)
 endif()
 wisp_source_of(rapidjson https://github.com/Tencent/rapidjson.git ${WISP_RAPIDJSON_COMMIT} WISP_RAPIDJSON_DIR WISP_RAPIDJSON_SOURCE)
@@ -127,6 +127,34 @@ if(WISP_RHI)
     target_include_directories(wisp_rhi PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/rhi/src)
     target_link_libraries(wisp_rhi PUBLIC wisp hearth::rhi)
     wisp_flags(wisp_rhi)
+endif()
+
+# wisp::fonts - the house faces built in (JetBrains Mono and TinyIcons): a
+# program with no font files of its own adds them. Their arrays are
+# generated from fonts/ttf/ (cmake -DMODE=update -P fonts/Embed.cmake);
+# wisp_fonts_check compares them.
+add_library(wisp_fonts STATIC fonts/src/Wisp/Fonts/HouseFaces.cpp)
+add_library(wisp::fonts ALIAS wisp_fonts)
+target_include_directories(wisp_fonts PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/fonts/src)
+target_link_libraries(wisp_fonts PUBLIC wisp)
+wisp_flags(wisp_fonts)
+add_custom_target(wisp_fonts_check
+    COMMAND ${CMAKE_COMMAND} -DMODE=check -P ${CMAKE_CURRENT_SOURCE_DIR}/fonts/Embed.cmake)
+
+# wisp::applet - Wisp as a program of its own on hearth::App (the renderer,
+# the main window's frame client, the events, the dock's windows, the
+# capture script), and wisp_gallery, the sample that shows every widget.
+option(WISP_APPLET "Build wisp::applet and wisp_gallery (needs wisp::rhi)" ${WISP_RHI})
+if(WISP_APPLET)
+    add_library(wisp_applet STATIC applet/src/Wisp/Applet/Applet.cpp)
+    add_library(wisp::applet ALIAS wisp_applet)
+    target_include_directories(wisp_applet PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/applet/src)
+    target_link_libraries(wisp_applet PUBLIC wisp_rhi wisp_fonts hearth::app)
+    wisp_flags(wisp_applet)
+
+    add_executable(wisp_gallery gallery/src/main.cpp)
+    target_link_libraries(wisp_gallery PRIVATE wisp_applet hearth::default_host)
+    wisp_flags(wisp_gallery)
 endif()
 
 if(WISP_SHADER_TOOLS)
@@ -186,6 +214,11 @@ if(WISP_BUILD_TESTS)
         add_executable(wisp_rhi_gpu_tests tests/main.cpp tests/RhiGpuTests.cpp)
         target_include_directories(wisp_rhi_gpu_tests PRIVATE "${WISP_HAMR_SOURCE}/include")
         target_link_libraries(wisp_rhi_gpu_tests PRIVATE wisp_rhi hearth::default_host)
+        if(WISP_APPLET)
+            # The applet drawing into hearth::App's offscreen image.
+            target_sources(wisp_rhi_gpu_tests PRIVATE tests/AppletGpuTests.cpp)
+            target_link_libraries(wisp_rhi_gpu_tests PRIVATE wisp_applet)
+        endif()
         wisp_flags(wisp_rhi_gpu_tests)
     endif()
 endif()

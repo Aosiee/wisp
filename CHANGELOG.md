@@ -4,6 +4,33 @@ Each release is an annotated tag (`v0.x.0`, or `v0.x.y` for a release of
 fixes only) whose message is the entry below. Versions before 1.0 may change
 the API; every entry says what callers need to change.
 
+## Unreleased
+
+Applets: Wisp as a program of its own, on Hearth's `hearth::App`.
+
+- `wisp::applet` (`Wisp/Applet/Applet.h`): `wisp::Applet` starts the
+  application with `RhiRenderer`, puts the main window's `RhiFrameClient`
+  on the app's presenter, routes the platform's events to Wisp by window,
+  and is the dock's `WindowHost` (a torn-out panel gets its own window and
+  presenter; none offscreen). `--input-script <json>` plays recorded input
+  (move, click, down, up, wheel, key, text by frame) as platform events,
+  and a capture waits for its last frame.
+- `wisp::fonts` (`Wisp/Fonts/HouseFaces.h`): JetBrains Mono Regular,
+  Medium and SemiBold and TinyIcons built in, added with the icon fallback
+  (`AddHouseFaces`) and set as the font roles (`ApplyHouseFaces`). The
+  arrays are generated from `fonts/ttf/` (`cmake -DMODE=update -P
+  fonts/Embed.cmake`); CI checks them.
+- `wisp_gallery` (`gallery/`): every base widget, the dock with a panel in
+  a second window, the code editor, a graph canvas, the charts and the
+  document view. CI captures it offscreen on lavapipe, twice, and compares
+  the two.
+- The GPU suite draws: an applet's root read back from the offscreen
+  image, and the input script clicking a button.
+
+Nothing changes for callers of 0.2. Wisp needs the Hearth that has
+`hearth::app` (`-DWISP_APPLET=OFF` builds without the applet and the
+gallery).
+
 ## 0.2.0
 
 Wisp's GPU renderer: TinyEngine's UI renderer and frame client, as

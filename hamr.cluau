@@ -28,6 +28,7 @@ const checkouts: { { name: string, option: string } } = {
 	{ name = "tmathDir", option = "WISP_TMATH_DIR" },
 	{ name = "rapidjsonDir", option = "WISP_RAPIDJSON_DIR" },
 	{ name = "stbDir", option = "WISP_STB_DIR" },
+	{ name = "stbDir", option = "HEARTH_STB_DIR" },
 	{ name = "glmDir", option = "TMATH_GLM_DIR" },
 	{ name = "glfwDir", option = "HEARTH_GLFW_DIR" },
 	{ name = "vulkanHeadersDir", option = "HEARTH_VULKAN_HEADERS_DIR" },
@@ -51,7 +52,7 @@ const configs: { Config } = {
 	{ name = "ubsan", cxx = gcc, type = "RelWithDebInfo", flags = { "-DWISP_SANITIZE=undefined" }, tier = "nightly", sanitizer = "undefined" },
 }
 
-const kPaths = { "src/**", "text/**", "tests/**", "CMakeLists.txt" }
+const kPaths = { "src/**", "text/**", "rhi/**", "fonts/**", "applet/**", "gallery/**", "tests/**", "CMakeLists.txt" }
 
 for (_, c in configs) {
 	const dir = `build-hamr-{c.name}`

@@ -29,11 +29,9 @@ namespace wisp {
 		pass.Write(swapchain.Image(), rhi::TextureState::RenderTarget);
 		pass.Write(swapchain.Depth(), rhi::TextureState::DepthWrite);
 		pass.SetExecute([this, graph](rhi::CommandList& list, const rg::PassResources&) {
-			rhi::VulkanCommandList& vkList = static_cast<rhi::VulkanCommandList&>(list);
-			graph->BeginRendering(vkList, false);
-			const VkExtent2D extent = graph->Extent();
-			Draw(list, graph->Window(), extent.width, extent.height);
-			vkCmdEndRendering(vkList.GetCommandBuffer());
+			graph->BeginRendering(list, false);
+			Draw(list, graph->Window(), graph->Width(), graph->Height());
+			list.EndRendering();
 		});
 	}
 
