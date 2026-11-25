@@ -4,6 +4,30 @@ Each release is an annotated tag (`v0.x.0`, or `v0.x.y` for a release of
 fixes only) whose message is the entry below. Versions before 1.0 may change
 the API; every entry says what callers need to change.
 
+## Unreleased
+
+The immediate-mode layer.
+
+- `wisp::im` (`Wisp/Im/Immediate.h`): `ImmediateHost`, a widget whose
+  frame function describes its content every frame through `im::Context`.
+  Calls are matched by id to retained widgets (created the first time,
+  updated after, destroyed when no call reaches them); results are what
+  the widget saw since the last frame. Layout scopes (rows, columns, a
+  scroll box, fields, collapsible sections, tree nodes, tables) and the
+  calls `Text`, `Heading`, `KeyValue`, `Button`, `Checkbox`, `Radio`,
+  `Slider`, `DragFloat`, `DragInt`, `InputText`, `Dropdown`, `ColourEdit`,
+  `ProgressBar`, `Plot`, `Image` and `Widget<T>` for any retained widget.
+  A 500-widget frame costs about 0.02 ms in a release build.
+- `UIApplication::AddFrameCallback(anchor, fn)` / `RemoveFrameCallback`: a
+  function run at the start of each frame of the window holding `anchor`,
+  before its animation tick and layout.
+- `BoxPanel::ReleaseChild`, `InsertChild`, `GetChild`;
+  `kit::MakeSectionHeading` and `kit::MakeKeyValue` (the heading and the
+  key/value row as widgets; `AddSectionHeading`/`AddKeyValue` use them);
+  `TextBlock::GetText`, `Spacer::SetSize`, `Image::SetBrush`/`GetBrush`.
+- `wisp_gallery --widgets immediate` builds the Widgets panel with
+  `wisp::im`; CI requires its capture to equal the retained panel's.
+
 ## 0.3.0
 
 Applets: Wisp as a program of its own, on Hearth's `hearth::App`.

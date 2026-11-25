@@ -30,6 +30,7 @@ public:
 		InvalidateLayout();
 	}
 	TextBlock& Text(const std::string& t) { SetText(t); return *this; }
+	const std::string& GetText() const { return m_Text; }
 	void SetColour(const glm::vec4& c) { m_Colour = c; }
 
 	void SetWrapMode(WrapMode m) { m_WrapMode = m; InvalidateLayout(); }

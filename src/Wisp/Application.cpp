@@ -62,6 +62,7 @@ void UIApplication::UpdateWindow(void* window, uint32_t width, uint32_t height, 
 	}
 	if (!ctx->Root) return;
 
+	RunFrameCallbacks(*ctx);
 	TickAnimation(1.0f / 60.0f);
 
 	const uint32_t w = width;
@@ -625,6 +626,45 @@ void UIApplication::TickAnimation(float dt)
 		for (Widget* w : ctx->AnimatingWidgets)
 			w->TickAnimation(dt);
 		ctx->AnimatingWidgets.clear();
+	}
+}
+
+UIApplication::FrameCallbackId UIApplication::AddFrameCallback(const Widget* anchor, std::function<void()> fn)
+{
+	const FrameCallbackId id = m_NextFrameCallback++;
+	m_FrameCallbacks.push_back({ id, anchor, std::move(fn) });
+	return id;
+}
+
+void UIApplication::RemoveFrameCallback(FrameCallbackId id)
+{
+	std::erase_if(m_FrameCallbacks, [id](const FrameCallback& c) { return c.Id == id; });
+}
+
+void UIApplication::RunFrameCallbacks(const WindowContext& ctx)
+{
+	if (m_FrameCallbacks.empty())
+		return;
+	// By id, looked up again before each call: a callback may remove itself
+	// or another, or add one (which first runs next frame).
+	std::vector<FrameCallbackId> ids;
+	ids.reserve(m_FrameCallbacks.size());
+	for (const FrameCallback& c : m_FrameCallbacks)
+		ids.push_back(c.Id);
+	for (FrameCallbackId id : ids)
+	{
+		auto it = std::find_if(m_FrameCallbacks.begin(), m_FrameCallbacks.end(),
+			[id](const FrameCallback& c) { return c.Id == id; });
+		if (it == m_FrameCallbacks.end())
+			continue;
+		const Widget* top = it->Anchor;
+		while (top && top->GetParent())
+			top = top->GetParent();
+		if (!top || (top != ctx.Root.get() && top != ctx.PopupRoot.get()))
+			continue;
+		// A copy: the callback may remove its own entry.
+		std::function<void()> fn = it->Fn;
+		fn();
 	}
 }
 

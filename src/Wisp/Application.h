@@ -259,6 +259,17 @@ public:
 	bool OnTextInput(void* window, uint32_t codepoint);
 
 	void TickAnimation(float dt);
+
+	// Code that describes its widgets every frame (the immediate layer)
+	// runs here: `fn` is called once at the start of each frame of the
+	// window whose tree holds `anchor` (its parent chain reaches the
+	// window's root or popup root) - after the frame's events, before its
+	// animation tick and layout, when nothing iterates the tree, so `fn`
+	// may add and destroy widgets. Not called while `anchor` is in no
+	// window. A callback may remove itself or another.
+	using FrameCallbackId = uint32_t;
+	FrameCallbackId AddFrameCallback(const Widget* anchor, std::function<void()> fn);
+	void RemoveFrameCallback(FrameCallbackId id);
 	static float GetAnimTime() { return s_Instance ? s_Instance->m_AnimTime : 0.0f; }
 	// The modifiers held now (1 = Shift, 2 = Ctrl, 4 = Alt, the key events' bits),
 	// tracked from the Shift/Ctrl keys' own down/up - mouse events carry none, so a
@@ -477,6 +488,16 @@ private:
 	bool m_PendingDismissPopups = false;
 
 	Widget* PickAbsoluteRecursive(WindowContext& ctx, Widget* w, const Geometry& geom, const glm::vec2& pt);
+
+	struct FrameCallback
+	{
+		FrameCallbackId Id = 0;
+		const Widget* Anchor = nullptr;
+		std::function<void()> Fn;
+	};
+	void RunFrameCallbacks(const WindowContext& ctx);
+	std::vector<FrameCallback> m_FrameCallbacks;
+	FrameCallbackId m_NextFrameCallback = 1;
 
 	// Animation
 	float  m_AnimTime = 0.0f;

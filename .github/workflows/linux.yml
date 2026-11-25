@@ -85,20 +85,24 @@ jobs:
         if: "!contains(matrix.flags, 'WISP_SANITIZE')"
         run: timeout 10m build/wisp_rhi_gpu_tests
 
-      # The gallery offscreen, twice: each run must capture (exit 0 and a
-      # sidecar), and the two captures must be the same pixels.
+      # The gallery offscreen, twice, then with its immediate Widgets panel:
+      # each run must capture (exit 0 and a sidecar), and the three captures
+      # must be the same pixels.
       - name: Gallery capture
         if: "!contains(matrix.flags, 'WISP_SANITIZE')"
         run: |
-          for run in 1 2; do
+          for run in 1 2 immediate; do
+            widgets=retained
+            if [ "$run" = immediate ]; then widgets=immediate; fi
             timeout 5m build/wisp_gallery --display-mode offscreen --render-target 1280x800 \
-              --capture-ui "gallery-$run.png" --min-frames 30 --frames 300
+              --capture-ui "gallery-$run.png" --min-frames 30 --frames 300 --widgets "$widgets"
             test -s "gallery-$run.png.json"
           done
           hash() { sed -n 's/.*"blake3": "\([0-9a-f]*\)".*/\1/p' "$1"; }
           echo "gallery: $(hash gallery-1.png.json)"
           test -n "$(hash gallery-1.png.json)"
           test "$(hash gallery-1.png.json)" = "$(hash gallery-2.png.json)"
+          test "$(hash gallery-1.png.json)" = "$(hash gallery-immediate.png.json)"
 
       - name: Keep the gallery capture
         if: "!contains(matrix.flags, 'WISP_SANITIZE') && always()"

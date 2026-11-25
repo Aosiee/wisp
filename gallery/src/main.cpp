@@ -4,6 +4,9 @@
 // is Wisp's capture check:
 //
 //     wisp_gallery --display-mode offscreen --render-target 1280x800 --capture-ui gallery.png
+//
+// `--widgets immediate` builds the Widgets panel with wisp::im instead: the
+// same widgets described every frame, which must capture the same image.
 
 #include "Wisp/Applet/Applet.h"
 
@@ -18,6 +21,7 @@
 #include "Wisp/Graph/GraphCanvas.h"
 #include "Wisp/Graph/GraphSchema.h"
 #include "Wisp/Icons.h"
+#include "Wisp/Im/Immediate.h"
 #include "Wisp/Kit/PanelKit.h"
 #include "Wisp/StyleTokens.h"
 #include "Wisp/Version.h"
@@ -115,14 +119,15 @@ ui.Button("Hello")
 	class Gallery
 	{
 	public:
-		explicit Gallery(wisp::Applet& applet)
-			: m_Applet(applet)
+		Gallery(wisp::Applet& applet, bool immediateWidgets)
+			: m_Applet(applet), m_ImmediateWidgets(immediateWidgets)
 		{
 			m_Fonts = &applet.Fonts();
 			m_Font = applet.GetHouseFaces().Regular;
 
 			m_State = std::make_shared<wisp::DockState>();
-			Register("Widgets", "Widgets", wisp::icons::Sliders, [this] { return BuildWidgets(); });
+			Register("Widgets", "Widgets", wisp::icons::Sliders,
+				[this] { return m_ImmediateWidgets ? BuildWidgetsImmediate() : BuildWidgets(); });
 			Register("Code", "Code", wisp::icons::Code, [this] { return BuildCode(); });
 			Register("Document", "Document", wisp::icons::File, [this] { return BuildDocument(); });
 			Register("Graph", "Graph", wisp::icons::Nodes, [this] { return BuildGraph(); });
@@ -345,6 +350,93 @@ ui.Button("Hello")
 			return Panel(std::move(scroll));
 		}
 
+		// The Widgets panel again, described every frame: each row is the
+		// retained one's call, and the widgets wisp::im has no call for
+		// (the float box with its indicator, the throbber, the pills) are
+		// placed as retained widgets.
+		std::unique_ptr<wisp::Widget> BuildWidgetsImmediate()
+		{
+			auto host = std::make_unique<wisp::ImmediateHost>(m_Fonts, m_Font, [this](wisp::im::Context& ui) {
+				ui.Next().Fill(1.0f);
+				ui.BeginScroll("scroll");
+
+				ui.Heading("Buttons");
+				ui.BeginField("Button");
+				ui.BeginRow();
+				for (const char* label : { "Apply", "Cancel" })
+				{
+					ui.Button(label);
+					ui.Spacing(8.0f, 1.0f);
+				}
+				ui.EndRow();
+				ui.EndField();
+				ui.BeginField("CheckBox");
+				ui.Checkbox("Snap to grid", &m_Snap);
+				ui.EndField();
+				ui.BeginField("RadioButtons");
+				ui.Radio("##space", &m_Space, { "Local", "World", "Parent" });
+				ui.EndField();
+
+				ui.Heading("Values");
+				ui.BeginField("Slider");
+				ui.Slider("##slider", &m_Amount, 0.0f, 1.0f);
+				ui.EndField();
+				ui.BeginField("Float");
+				ui.Widget<wisp::SFloatBox>("float", [this] {
+					auto value = std::make_unique<wisp::SFloatBox>(m_Fonts, m_Font, tokens::FontBody, 1.25f);
+					value->SetStep(0.05f);
+					value->SetColourIndicator(tokens::Error);
+					value->SetIndicatorLabel("X");
+					return value;
+				});
+				ui.EndField();
+				ui.BeginField("Int");
+				ui.DragInt("##int", &m_Count, 0, 100);
+				ui.EndField();
+				ui.BeginField("ProgressBar");
+				ui.ProgressBar(0.62f);
+				ui.EndField();
+				ui.BeginField("Throbber");
+				ui.Widget<wisp::Throbber>("throbber", [] {
+					auto throbber = std::make_unique<wisp::Throbber>();
+					throbber->SetColour(tokens::Accent);
+					return throbber;
+				});
+				ui.EndField();
+
+				ui.Heading("Text");
+				ui.BeginField("EditableText");
+				ui.InputText("##search", &m_Search, "Search assets...");
+				ui.EndField();
+				ui.BeginField("With text");
+				ui.InputText("##name", &m_Name);
+				ui.EndField();
+				ui.BeginField("Dropdown");
+				ui.Dropdown("##filter", &m_Filter, { "Linear", "Nearest", "Anisotropic" });
+				ui.EndField();
+
+				ui.Heading("Read-outs");
+				ui.BeginField("Pills");
+				ui.BeginRow();
+				const std::pair<const char*, glm::vec4> pills[] = { { "Ready", tokens::Success }, { "2 warnings", tokens::Warning },
+					{ "Error", tokens::Error } };
+				for (const auto& [label, colour] : pills)
+				{
+					ui.Widget<wisp::Border>(label, [&] { return wisp::kit::MakePill(m_Fonts, m_Font, label, colour); });
+					ui.Spacing(6.0f, 1.0f);
+				}
+				ui.EndRow();
+				ui.EndField();
+				ui.KeyValue("Frame", "16.6 ms");
+				ui.KeyValue("Draw calls", "128");
+				ui.KeyValue("Triangles", "1.2 M");
+				ui.Separator();
+
+				ui.EndScroll();
+			});
+			return Panel(std::move(host));
+		}
+
 		std::unique_ptr<wisp::Widget> Panel(std::unique_ptr<wisp::Widget> content)
 		{
 			auto panel = std::make_unique<wisp::Border>();
@@ -428,6 +520,15 @@ ui.Button("Hello")
 		}
 
 		wisp::Applet& m_Applet;
+		bool m_ImmediateWidgets = false;
+		// The immediate Widgets panel's values.
+		bool m_Snap = true;
+		int m_Space = 1;
+		float m_Amount = 0.35f;
+		int m_Count = 42;
+		std::string m_Search;
+		std::string m_Name = "Crate_01";
+		int m_Filter = 0;
 		wisp::FontCache* m_Fonts = nullptr;
 		wisp::FontHandle m_Font = wisp::InvalidFont;
 		std::shared_ptr<wisp::DockState> m_State;
@@ -448,9 +549,14 @@ int main(int argc, char** argv)
 	defaults.MinWidth = 640;
 	defaults.MinHeight = 400;
 	defaults.AppName = "wisp_gallery";
-	hearth::App app(hearth::App::ParseArgs(argc, argv, defaults));
+	hearth::AppDesc desc = hearth::App::ParseArgs(argc, argv, defaults);
+	bool immediateWidgets = false;
+	for (size_t i = 0; i + 1 < desc.Args.size(); i++)
+		if (desc.Args[i] == "--widgets")
+			immediateWidgets = desc.Args[i + 1] == "immediate";
+	hearth::App app(std::move(desc));
 	wisp::Applet ui(app);
 	ui.AddHouseFaces();
-	gallery::Gallery gallery(ui);
+	gallery::Gallery gallery(ui, immediateWidgets);
 	return app.Run();
 }

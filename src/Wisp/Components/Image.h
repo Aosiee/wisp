@@ -31,6 +31,8 @@ public:
 	}
 
 	void SetOverrideSize(const glm::vec2& s) { m_OverrideSize = s; InvalidateLayout(); }
+	void SetBrush(const Brush& brush) { m_Brush = brush; }
+	const Brush& GetBrush() const { return m_Brush; }
 
 private:
 	Brush     m_Brush;

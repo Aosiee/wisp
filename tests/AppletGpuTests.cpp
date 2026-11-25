@@ -7,6 +7,7 @@
 #include "Wisp/Components/Border.h"
 #include "Wisp/Components/Button.h"
 #include "Wisp/Components/Spacer.h"
+#include "Wisp/Im/Immediate.h"
 
 #include "hearth/App.h"
 #include "hearth/rhi/vulkan/WindowPresenter.h"
@@ -102,6 +103,38 @@ namespace wisp::applet_gpu_tests {
 		}();
 		// The script's last frame, then two frames to show it.
 		CHECK(sidecar.find("\"frames\": 12") != std::string::npos);
+		std::filesystem::remove_all(dir);
+	}
+
+	TEST_CASE("wisp applet gpu: an immediate host runs every frame, and its button reports the script's click once")
+	{
+		const std::filesystem::path dir = std::filesystem::temp_directory_path() / "wisp_applet_gpu_im";
+		std::filesystem::create_directories(dir);
+		const std::filesystem::path script = dir / "script.json";
+		std::ofstream(script) << R"({ "events": [ { "frame": 10, "type": "click", "x": 8, "y": 8, "button": 0 } ] })";
+
+		hearth::AppDesc desc = Offscreen(96, 64);
+		desc.CaptureUiPath = (dir / "capture.png").string();
+		desc.FrameLimit = 100;
+		desc.Args = { "--input-script", script.string() };
+		hearth::App app(desc);
+		std::vector<uint64_t> clickFrames;
+		uint64_t frames = 0;
+		{
+			Applet ui(app);
+			ui.AddHouseFaces();
+			ui.SetRoot(std::make_unique<ImmediateHost>(&ui.Fonts(), ui.GetHouseFaces().Regular, [&](im::Context& im) {
+				frames++;
+				im.Next().HAlign(HAlign::Left);
+				if (im.Button("Go"))
+					clickFrames.push_back(app.GetLoop().FrameIndex());
+			}));
+			CHECK(app.Run() == hearth::kExitCaptured);
+		}
+		// The click's events dispatch before the frame's UI update, so the
+		// call that frame sees it.
+		CHECK(clickFrames == std::vector<uint64_t>{ 10u });
+		CHECK(frames >= 12u);
 		std::filesystem::remove_all(dir);
 	}
 

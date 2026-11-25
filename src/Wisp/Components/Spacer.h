@@ -13,6 +13,9 @@ public:
 
 	Spacer(const glm::vec2& size) : m_Size(size) {}
 
+	void SetSize(const glm::vec2& size) { if (size != m_Size) { m_Size = size; InvalidateLayout(); } }
+	const glm::vec2& GetSize() const { return m_Size; }
+
 	glm::vec2 ComputeDesiredSize() const override { return m_Size; }
 	void ArrangeChildren(const Geometry&, ArrangedChildren&) const override {}
 	int OnPaint(const PaintArgs&, const Geometry&, DrawList&, int layerId, const WidgetStyleContext&) const override { return layerId; }

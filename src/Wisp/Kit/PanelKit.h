@@ -26,21 +26,37 @@
 namespace wisp::kit {
 
 
-	inline void AddSectionHeading(VerticalBox& vbox, FontCache* fc, FontHandle font, const std::string& text)
+	// A muted section heading and the slot it sits in (a little air above,
+	// less below); AddSectionHeading adds both to a column.
+	struct SlottedWidget
 	{
-		auto heading = std::make_unique<TextBlock>(fc,
+		std::unique_ptr<Widget> Content;
+		Slot SlotData;
+	};
+
+	inline SlottedWidget MakeSectionHeading(FontCache* fc, FontHandle font, const std::string& text)
+	{
+		SlottedWidget out;
+		out.Content = std::make_unique<TextBlock>(fc,
 			UIApplication::FontOr(FontRole::SemiBold, font), tokens::FontSmall, text, tokens::TextMuted);
-		auto slot = vbox.AddSlot();
-		slot.Padding(10.0f, 0.0f);
-		slot.Data.PaddingTop = 12.0f;
-		slot.Data.PaddingBottom = 4.0f;
-		vbox + std::move(slot)[ std::move(heading) ];
+		out.SlotData.SetPadding(10.0f, 0.0f);
+		out.SlotData.PaddingTop = 12.0f;
+		out.SlotData.PaddingBottom = 4.0f;
+		return out;
 	}
 
-	// A banded key/value row; returns the value label for the per-frame
-	// refresh (the panel keeps the content alive, the pointer stays valid).
-	inline TextBlock* AddKeyValue(VerticalBox& vbox, FontCache* fc, FontHandle font, const std::string& key,
-		int band, float keyWidth = 150.0f, bool monoKey = false)
+	inline void AddSectionHeading(VerticalBox& vbox, FontCache* fc, FontHandle font, const std::string& text)
+	{
+		SlottedWidget heading = MakeSectionHeading(fc, font, text);
+		const size_t index = vbox.GetChildCount();
+		vbox.PushChild(std::move(heading.Content));
+		vbox.GetSlot(index) = heading.SlotData;
+	}
+
+	// A banded key/value row (in its default slot); `value` receives the
+	// value label for the per-frame refresh.
+	inline std::unique_ptr<Widget> MakeKeyValue(FontCache* fc, FontHandle font, const std::string& key,
+		int band, TextBlock** value, float keyWidth = 150.0f, bool monoKey = false)
 	{
 		const FontHandle mono = UIApplication::FontOr(FontRole::Mono, font);
 		auto row = std::make_unique<HorizontalBox>(BoxOrientation::Horizontal);
@@ -48,16 +64,27 @@ namespace wisp::kit {
 		keyBox->SetWidthOverride(keyWidth);
 		keyBox->SetChild(std::make_unique<TextBlock>(fc, monoKey ? mono : font,
 			monoKey ? tokens::FontMono * 0.95f : tokens::FontBody * 0.95f, key, tokens::TextSecondary));
-		auto value = std::make_unique<TextBlock>(fc, mono, tokens::FontMono * 0.95f, "--", tokens::TextPrimary);
-		TextBlock* out = value.get();
+		auto text = std::make_unique<TextBlock>(fc, mono, tokens::FontMono * 0.95f, "--", tokens::TextPrimary);
+		if (value)
+			*value = text.get();
 		*row
 			+ row->AddSlot().VAlign(VAlign::Center)[ std::move(keyBox) ]
-			+ row->AddSlot().Fill(1.0f).VAlign(VAlign::Center)[ std::move(value) ];
+			+ row->AddSlot().Fill(1.0f).VAlign(VAlign::Center)[ std::move(text) ];
 		auto bandBox = std::make_unique<Border>();
 		bandBox->SetBrush({ (band % 2) ? tokens::PanelAlt : tokens::Panel });
 		bandBox->SetPadding(10.0f, 4.0f);
 		bandBox->SetChild(std::move(row));
-		vbox.AddChild(std::move(bandBox));
+		return bandBox;
+	}
+
+	// A banded key/value row added to a column; returns the value label for
+	// the per-frame refresh (the panel keeps the content alive, the pointer
+	// stays valid).
+	inline TextBlock* AddKeyValue(VerticalBox& vbox, FontCache* fc, FontHandle font, const std::string& key,
+		int band, float keyWidth = 150.0f, bool monoKey = false)
+	{
+		TextBlock* out = nullptr;
+		vbox.AddChild(MakeKeyValue(fc, font, key, band, &out, keyWidth, monoKey));
 		return out;
 	}
 

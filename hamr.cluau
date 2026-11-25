@@ -52,7 +52,7 @@ const configs: { Config } = {
 	{ name = "ubsan", cxx = gcc, type = "RelWithDebInfo", flags = { "-DWISP_SANITIZE=undefined" }, tier = "nightly", sanitizer = "undefined" },
 }
 
-const kPaths = { "src/**", "text/**", "rhi/**", "fonts/**", "applet/**", "gallery/**", "tests/**", "CMakeLists.txt" }
+const kPaths = { "src/**", "text/**", "rhi/**", "fonts/**", "im/**", "applet/**", "gallery/**", "tests/**", "CMakeLists.txt" }
 
 for (_, c in configs) {
 	const dir = `build-hamr-{c.name}`

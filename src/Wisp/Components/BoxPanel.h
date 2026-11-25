@@ -57,6 +57,26 @@ public:
 	{
 		return m_Children[index].SlotData;
 	}
+	const Slot& GetSlot(size_t index) const { return m_Children[index].SlotData; }
+	Widget* GetChild(size_t index) const { return m_Children[index].WidgetPtr.get(); }
+
+	// Takes a child out (its parent cleared), the rest moving up.
+	std::unique_ptr<Widget> ReleaseChild(size_t index)
+	{
+		std::unique_ptr<Widget> child = std::move(m_Children[index].WidgetPtr);
+		m_Children.erase(m_Children.begin() + (std::ptrdiff_t)index);
+		ClearParent(child.get());
+		InvalidateLayout();
+		return child;
+	}
+
+	// Puts a child at `index` (at most the child count) in `slot`.
+	void InsertChild(size_t index, std::unique_ptr<Widget> child, const Slot& slot = {})
+	{
+		SetupParentChild(this, child.get());
+		m_Children.insert(m_Children.begin() + (std::ptrdiff_t)std::min(index, m_Children.size()), { std::move(child), slot });
+		InvalidateLayout();
+	}
 
 	size_t GetChildCount() const { return m_Children.size(); }
 

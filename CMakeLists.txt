@@ -141,6 +141,14 @@ wisp_flags(wisp_fonts)
 add_custom_target(wisp_fonts_check
     COMMAND ${CMAKE_COMMAND} -DMODE=check -P ${CMAKE_CURRENT_SOURCE_DIR}/fonts/Embed.cmake)
 
+# wisp::im - the immediate-mode layer: code that describes its UI every
+# frame, matched to retained widgets (Wisp/Im/Immediate.h).
+add_library(wisp_im STATIC im/src/Wisp/Im/Immediate.cpp)
+add_library(wisp::im ALIAS wisp_im)
+target_include_directories(wisp_im PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/im/src)
+target_link_libraries(wisp_im PUBLIC wisp)
+wisp_flags(wisp_im)
+
 # wisp::applet - Wisp as a program of its own on hearth::App (the renderer,
 # the main window's frame client, the events, the dock's windows, the
 # capture script), and wisp_gallery, the sample that shows every widget.
@@ -153,7 +161,7 @@ if(WISP_APPLET)
     wisp_flags(wisp_applet)
 
     add_executable(wisp_gallery gallery/src/main.cpp)
-    target_link_libraries(wisp_gallery PRIVATE wisp_applet hearth::default_host)
+    target_link_libraries(wisp_gallery PRIVATE wisp_applet wisp_im hearth::default_host)
     wisp_flags(wisp_gallery)
 endif()
 
@@ -204,9 +212,13 @@ if(WISP_BUILD_TESTS)
     wisp_flags(wisp_text_tests)
 
     add_executable(wisp_tests tests/main.cpp tests/CodeModelTests.cpp tests/ContrastTests.cpp tests/DockModelTests.cpp
-        tests/FontCacheTests.cpp tests/GraphTests.cpp)
+        tests/FontCacheTests.cpp tests/GraphTests.cpp tests/ImmediateTests.cpp)
     target_include_directories(wisp_tests PRIVATE "${WISP_HAMR_SOURCE}/include")
-    target_link_libraries(wisp_tests PRIVATE wisp hearth::default_host)
+    target_link_libraries(wisp_tests PRIVATE wisp wisp_im hearth::default_host)
+    if(WISP_SANITIZE)
+        # The timing checks hold only for an optimised build without one.
+        target_compile_definitions(wisp_tests PRIVATE WISP_SANITIZED)
+    endif()
     wisp_flags(wisp_tests)
 
     # wisp::rhi on a device (lavapipe in CI).
@@ -217,7 +229,7 @@ if(WISP_BUILD_TESTS)
         if(WISP_APPLET)
             # The applet drawing into hearth::App's offscreen image.
             target_sources(wisp_rhi_gpu_tests PRIVATE tests/AppletGpuTests.cpp)
-            target_link_libraries(wisp_rhi_gpu_tests PRIVATE wisp_applet)
+            target_link_libraries(wisp_rhi_gpu_tests PRIVATE wisp_applet wisp_im)
         endif()
         wisp_flags(wisp_rhi_gpu_tests)
     endif()

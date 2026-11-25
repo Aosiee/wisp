@@ -36,6 +36,9 @@ and knows nothing about it.
 - **`wisp::fonts`** - the house faces built in: JetBrains Mono (Regular,
   Medium, SemiBold) and TinyIcons, the icon font `Wisp/Icons.h` names
   (`Wisp/Fonts/HouseFaces.h`: `AddHouseFaces`, `ApplyHouseFaces`).
+- **`wisp::im`** - the immediate-mode layer (`Wisp/Im/Immediate.h`): code
+  that describes its UI every frame and reads the results back, on the
+  retained widgets (below).
 - **`wisp::applet`** - Wisp as a program of its own, on
   [Hearth](https://github.com/Aosiee/hearth)'s `hearth::App`
   (`Wisp/Applet/Applet.h`): the renderer, the main window's frame client,
@@ -67,6 +70,48 @@ Every applet takes Hearth's flags; offscreen it captures itself:
 ```sh
 wisp_gallery --display-mode offscreen --render-target 1280x800 --capture-ui gallery.png
 ```
+
+## Immediate mode
+
+For a quick tool, describe the UI every frame instead of building it:
+
+```cpp
+#include "Wisp/Im/Immediate.h"
+
+ui.SetRoot(std::make_unique<wisp::ImmediateHost>(&ui.Fonts(), ui.GetHouseFaces().Regular, [&](wisp::im::Context& im) {
+    im.Text("Frame {:.1f} ms", frameMs);
+    im.Slider("Exposure", &exposure, -4.0f, 4.0f);
+    if (im.Button("Reset"))
+        exposure = 0.0f;
+}));
+```
+
+An `ImmediateHost` is an ordinary widget, so an immediate scope sits
+anywhere in a retained layout, and `im.Widget<T>(id, factory)` places any
+retained widget inside one. Its function runs once a frame, at the start of
+its window's update (after the frame's events, before layout). Each call
+is matched by its id to the widget the host made for it the first time;
+later frames update that widget, and a widget no call reached is destroyed.
+So the widgets are Wisp's own, with their look, focus and keyboard rules.
+
+- **Ids:** a call's label is its id within its scope (`"Save##toolbar"`
+  shows `Save`); `PushId`/`PopId` keep a loop's items apart. Text,
+  separators, spacing, progress bars, images and table rows key on their
+  position, so a text that changes every frame keeps its widget.
+- **Results** are what the widget saw since the last frame: `Button`
+  returns true once per click; a value call writes the edit through its
+  pointer and returns true; a value the program changed is shown.
+- **Layout:** `Next()` sets the next item's slot (padding, fill,
+  alignment); `BeginRow`/`BeginColumn`, `BeginScroll`, `BeginField(label)`
+  (a key column and the field's items), `Begin(title)` (a collapsible
+  section), `TreeNode`, `BeginTable(columns)`/`TableNextRow`, `Indent`,
+  `Separator`, `Spacing`.
+- **The calls:** `Text`, `TextColoured`, `Heading`, `KeyValue`, `Button`,
+  `Checkbox`, `Radio`, `Slider` (float, int), `DragFloat`, `DragInt`,
+  `InputText`, `Dropdown`, `ColourEdit`, `ProgressBar`, `Plot`, `Image`.
+
+`wisp_gallery --widgets immediate` builds its Widgets panel this way; CI
+checks it captures the same image as the retained panel.
 
 ## What the program supplies
 
