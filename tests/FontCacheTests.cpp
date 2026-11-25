@@ -15,8 +15,9 @@
 
 TEST_CASE("wisp font cache: every size packs inside the atlas - growth, then the recycle at the maximum")
 {
-	// WISP_TEST_FONTS_DIR: the build names tests/fonts.
-	const std::filesystem::path path = std::filesystem::path(WISP_TEST_FONTS_DIR) / "AdwaitaMono-Regular.ttf";
+	// Beside this file, named as the build named it: absolute in Wisp's
+	// own build, relative to the directory the suite runs from in a host's.
+	const std::filesystem::path path = std::filesystem::path(__FILE__).parent_path() / "fonts" / "AdwaitaMono-Regular.ttf";
 	std::ifstream in(path, std::ios::binary);
 	REQUIRE_MESSAGE(in, "the test face is missing: " << path.string());
 	const std::vector<uint8_t> ttf((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());

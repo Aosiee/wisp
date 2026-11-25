@@ -120,7 +120,6 @@ if(WISP_BUILD_TESTS)
     add_executable(wisp_tests tests/main.cpp tests/CodeModelTests.cpp tests/ContrastTests.cpp tests/DockModelTests.cpp
         tests/FontCacheTests.cpp tests/GraphTests.cpp)
     target_include_directories(wisp_tests PRIVATE "${WISP_HAMR_SOURCE}/include")
-    target_compile_definitions(wisp_tests PRIVATE WISP_TEST_FONTS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fonts")
     target_link_libraries(wisp_tests PRIVATE wisp hearth::default_host)
     wisp_flags(wisp_tests)
 endif()
