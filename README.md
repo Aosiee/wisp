@@ -1,8 +1,10 @@
 # Wisp
 
-[![Linux](https://github.com/Aosiee/wisp/actions/workflows/linux.yml/badge.svg)](https://github.com/Aosiee/wisp/actions/workflows/linux.yml)
-[![Windows: not yet](https://img.shields.io/badge/Windows-not%20yet-lightgrey)](#building)
-[![macOS: not yet](https://img.shields.io/badge/macOS-not%20yet-lightgrey)](#building)
+[![Linux](https://github.com/Aosiee/wisp/actions/workflows/linux.yml/badge.svg?branch=dev)](https://github.com/Aosiee/wisp/actions/workflows/linux.yml)
+[![Windows: not supported](https://img.shields.io/badge/Windows-not%20supported-lightgrey)](#building)
+[![macOS: not supported](https://img.shields.io/badge/macOS-not%20supported-lightgrey)](#building)
+
+[![Release](https://img.shields.io/github/v/release/Aosiee/wisp)](https://github.com/Aosiee/wisp/releases/latest)
 
 A retained-mode UI library for real-time applications and the tools around
 them: widgets, layout, popups and menus, drag and drop, animation, a
@@ -82,6 +84,13 @@ its own. `-DWISP_DEBUG_TOOLS=OFF` leaves out the widget reflector and the
 focus overlay. The full suite, side by side and in every configuration,
 runs through [hamr](https://github.com/Aosiee/hamr): `hamr run`
 (`--tier nightly` adds the sanitizers).
+
+## Branches and releases
+
+`main` holds releases only, each one tagged. New work is built on a stream
+branched from `dev`, lands on `dev` once it passes locally, and is checked
+there by CI; when enough has gathered, `dev` becomes the next release. See
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## License
 

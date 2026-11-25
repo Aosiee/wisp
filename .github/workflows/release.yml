@@ -1,0 +1,89 @@
+# A release for each version tag (vX.Y.Z): Wisp built and its suite run
+# on Linux, then published as a GitHub release whose notes are the tag's
+# message. GitHub attaches the source archives; a program builds Wisp
+# from source (FetchContent or add_subdirectory). An existing tag is
+# released again by running the workflow by hand with its name.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The tag to release (vX.Y.Z)'
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  release:
+    name: linux-x86_64
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+
+      # The tag names the version the header sets.
+      - name: Check the tag against the version
+        run: |
+          version=$(sed -n 's/^#define WISP_VERSION_STRING "\(.*\)"$/\1/p' src/Wisp/Version.h)
+          if [ "v$version" != "$TAG" ]; then
+            echo "the tag is $TAG, but src/Wisp/Version.h says $version"
+            exit 1
+          fi
+
+      - name: The pinned hamr commit
+        id: pins
+        run: echo "hamr=$(sed -n 's/^set(WISP_HAMR_COMMIT \([0-9a-f]*\).*/\1/p' CMakeLists.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out hamr
+        uses: actions/checkout@v5
+        with:
+          repository: Aosiee/hamr
+          ref: ${{ steps.pins.outputs.hamr }}
+          path: external/hamr
+
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DWISP_HAMR_DIR="$GITHUB_WORKSPACE/external/hamr" -DHEARTH_NULL_PLATFORM_ONLY=ON
+          cmake --build build -j "$(nproc)"
+
+      - name: Suite
+        run: |
+          timeout 10m build/wisp_tests
+          timeout 10m build/wisp_text_tests
+
+      - name: Notes from the tag
+        run: |
+          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+          {
+            git tag -l --format='%(contents)' "$TAG"
+            echo
+            echo "Use it from CMake:"
+            echo
+            echo '```cmake'
+            echo "include(FetchContent)"
+            echo "FetchContent_Declare(wisp GIT_REPOSITORY https://github.com/Aosiee/wisp.git GIT_TAG $TAG)"
+            echo "FetchContent_MakeAvailable(wisp)"
+            echo "target_link_libraries(my_program PRIVATE wisp::wisp)"
+            echo '```'
+          } > notes.md
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Wisp ${TAG#v}"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release edit "$TAG" --title "$title" --notes-file notes.md
+          else
+            gh release create "$TAG" --title "$title" --notes-file notes.md --verify-tag
+          fi
