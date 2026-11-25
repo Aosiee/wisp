@@ -1,0 +1,18 @@
+# The committed SPIR-V headers against the ones glslang just built from the
+# GLSL: MODE=check fails on any difference, MODE=update copies them over.
+file(GLOB generated "${GENERATED}/*.h")
+set(stale "")
+foreach(header ${generated})
+    get_filename_component(name ${header} NAME)
+    if(MODE STREQUAL "update")
+        file(COPY_FILE ${header} "${COMMITTED}/${name}" ONLY_IF_DIFFERENT)
+    else()
+        execute_process(COMMAND ${CMAKE_COMMAND} -E compare_files ${header} "${COMMITTED}/${name}" RESULT_VARIABLE different)
+        if(different)
+            list(APPEND stale ${name})
+        endif()
+    endif()
+endforeach()
+if(stale)
+    message(FATAL_ERROR "The committed shader SPIR-V is stale (${stale}): build wisp_shaders_update with -DWISP_SHADER_TOOLS=ON and commit the headers.")
+endif()

@@ -61,6 +61,11 @@ jobs:
           timeout 10m build/wisp_tests
           timeout 10m build/wisp_text_tests
 
+      - name: GPU test
+        run: |
+          sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers
+          timeout 10m build/wisp_rhi_gpu_tests
+
       - name: Notes from the tag
         run: |
           git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"

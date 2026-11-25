@@ -12,8 +12,8 @@ docking system with torn-out windows, a code editor and a document viewer.
 Wisp builds each window's frame into draw batches; the program's renderer
 records them.
 
-Wisp stands on [Hearth](https://github.com/Aosiee/hearth) (the platform and
-the host seam) and [tmath](https://github.com/Aosiee/tmath). It was written
+Wisp stands on [Hearth](https://github.com/Aosiee/hearth) (the platform,
+the host seam and, for `wisp::rhi`, the GPU layer) and [tmath](https://github.com/Aosiee/tmath). It was written
 for [TinyEngine](https://github.com/Aosiee/TinyEngine)'s editor and tools
 and knows nothing about it.
 
@@ -27,6 +27,12 @@ and knows nothing about it.
 - **`wisp::text`** - the text models with no UI: the Markdown parser
   (`Wisp/Doc/Markdown.h`) and the Luau tokenizer (`Wisp/Code/`), for a tool
   that renders documents or highlights code without Wisp's widgets.
+- **`wisp::rhi`** - Wisp drawn through Hearth's GPU layer: `RhiRenderer`
+  (`Wisp/Rhi/RhiRenderer.h`, the UI pipelines with their SPIR-V built in,
+  the glyph atlas, images and each window's staging) and `RhiFrameClient`
+  (`Wisp/Rhi/RhiFrameClient.h`, a window's UI as one of its
+  `hearth::rhi::WindowPresenter`'s frame clients: the update, then a pass
+  over the swapchain). `-DWISP_RHI=OFF` leaves it out.
 
 ## What the program supplies
 
@@ -34,7 +40,9 @@ Wisp draws nothing and opens no window by itself. The program gives it:
 
 - **A renderer** (`Wisp/Renderer.h`): `IUIRenderer` creates the textures
   (the glyph atlas, images) and prepares each window's batches; the
-  program records them in its own frame.
+  program records them in its own frame. On Hearth's GPU layer that is
+  `wisp::rhi`'s `RhiRenderer`, and `RhiFrameClient` does the per-window
+  frame work.
 - **Windows**: each OS window the program shows Wisp in is a window
   context (`CreateWindowContext`); its input goes to the `On*` calls. A
   dock that tears a panel out asks the program's `WindowHost`
@@ -76,7 +84,14 @@ CI does).
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DHEARTH_NULL_PLATFORM_ONLY=ON
 cmake --build build
 build/wisp_tests && build/wisp_text_tests
+build/wisp_rhi_gpu_tests   # needs a Vulkan device
 ```
+
+The UI shaders' GLSL is in `rhi/shaders/` and their SPIR-V is committed
+beside the renderer (`rhi/src/Wisp/Rhi/Shaders/`). After a shader edit,
+configure with `-DWISP_SHADER_TOOLS=ON` (it builds the pinned glslang;
+`-DWISP_GLSLANG_DIR=<dir>` uses a local checkout) and build
+`wisp_shaders_update`; CI builds `wisp_shaders_check`.
 
 A host build adds Wisp with `add_subdirectory` and links `wisp::wisp` (or
 `wisp::text` alone); a host that already has Hearth or tmath targets keeps
