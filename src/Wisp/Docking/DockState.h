@@ -3,9 +3,8 @@
 #include "Wisp/Core.h"
 #include "Wisp/Application.h"
 #include "Wisp/Docking/DockModel.h"
-#include "Platform/WindowCaps.h"
-#include "TinyEngine/Core/Application.h"
-#include "TinyEngine/Core/Log.h"
+#include "hearth/platform/Platform.h"
+#include "Wisp/Log.h"
 #include <cstring>
 #include <fstream>
 #include <functional>
@@ -220,7 +219,7 @@ public:
 		if (!f) return false;
 		// Invariant 13: positions only persist where the platform can place
 		// windows. A Wayland save simply omits them.
-		std::string json = dock::SerializeLayout(m_Model, true, TinyEngine::DetectWindowCaps().CanPlaceWindows);
+		std::string json = dock::SerializeLayout(m_Model, true, UIApplication::CanPlaceWindows());
 		f.write(json.data(), (std::streamsize)json.size());
 		return !!f;
 	}

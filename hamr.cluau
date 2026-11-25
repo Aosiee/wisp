@@ -1,0 +1,90 @@
+// Wisp's suite for hamr (github.com/Aosiee/hamr): `hamr run` here.
+//
+// Each configuration builds in its own build-hamr-<name> directory and runs
+// both suite binaries' cases side by side. The fast tier is GCC release and
+// debug and a Clang release; the nightly tier adds the address and
+// undefined-behaviour sanitizers and a build without the debug tools.
+//
+//     hamr run                       the fast tier
+//     hamr run --tier nightly        every configuration
+//     hamr run --set hamrDir=<dir>   a local hamr checkout instead of fetching
+//
+// The same goes for every other dependency: hearthDir, tmathDir, glmDir,
+// rapidjsonDir, stbDir, glfwDir and vulkanHeadersDir. Hearth's GLFW builds
+// with its null platform only, as in CI: no display or window-system
+// libraries needed.
+
+const hamr = require("@hamr")
+type Context = hamr.Context
+
+const suite = hamr.suite("wisp", { budgets = { fast = 180, nightly = 600 } })
+const gcc = suite:var("gcc", "g++")
+const clang = suite:var("clang", "clang++")
+
+// Each local checkout and the CMake cache entry it sets.
+const checkouts: { { name: string, option: string } } = {
+	{ name = "hamrDir", option = "WISP_HAMR_DIR" },
+	{ name = "hearthDir", option = "WISP_HEARTH_DIR" },
+	{ name = "tmathDir", option = "WISP_TMATH_DIR" },
+	{ name = "rapidjsonDir", option = "WISP_RAPIDJSON_DIR" },
+	{ name = "stbDir", option = "WISP_STB_DIR" },
+	{ name = "glmDir", option = "TMATH_GLM_DIR" },
+	{ name = "glfwDir", option = "HEARTH_GLFW_DIR" },
+	{ name = "vulkanHeadersDir", option = "HEARTH_VULKAN_HEADERS_DIR" },
+}
+const checkoutFlags: { string } = {}
+for (_, c in checkouts) {
+	const dir = suite:var(c.name, "")
+	if (dir != "") {
+		table.insert(checkoutFlags, `-D{c.option}={dir}`)
+	}
+}
+
+type Config = { name: string, cxx: string, type: string, flags: { string }, tier: string, sanitizer: string? }
+
+const configs: { Config } = {
+	{ name = "gcc-release", cxx = gcc, type = "Release", flags = {}, tier = "fast" },
+	{ name = "gcc-debug", cxx = gcc, type = "Debug", flags = {}, tier = "fast" },
+	{ name = "clang-release", cxx = clang, type = "Release", flags = {}, tier = "fast" },
+	{ name = "no-debug-tools", cxx = gcc, type = "Debug", flags = { "-DWISP_DEBUG_TOOLS=OFF" }, tier = "nightly" },
+	{ name = "asan", cxx = gcc, type = "RelWithDebInfo", flags = { "-DWISP_SANITIZE=address" }, tier = "nightly", sanitizer = "address" },
+	{ name = "ubsan", cxx = gcc, type = "RelWithDebInfo", flags = { "-DWISP_SANITIZE=undefined" }, tier = "nightly", sanitizer = "undefined" },
+}
+
+const kPaths = { "src/**", "text/**", "tests/**", "CMakeLists.txt" }
+
+for (_, c in configs) {
+	const dir = `build-hamr-{c.name}`
+	suite:step(`build:{c.name}`, {
+		tier = c.tier,
+		doc = `Configures and builds Wisp and its suite ({c.cxx}, {c.type}).`,
+		resources = { exclusive = true },
+		timeout = 1200,
+		budget = if (c.sanitizer != nil) 120 else 60,
+		paths = kPaths,
+		run = function(ctx: Context) {
+			const configure = { "cmake", "-S", ".", "-B", dir, "-G", "Ninja", `-DCMAKE_BUILD_TYPE={c.type}`, `-DCMAKE_CXX_COMPILER={c.cxx}`, "-DHEARTH_NULL_PLATFORM_ONLY=ON" }
+			for (_, flag in checkoutFlags) {
+				table.insert(configure, flag)
+			}
+			for (_, flag in c.flags) {
+				table.insert(configure, flag)
+			}
+			ctx:run(configure)
+			ctx:run({ "cmake", "--build", dir, "-j", tostring(host.cores()) })
+		},
+	})
+	for (_, binary in { "wisp_tests", "wisp_text_tests" }) {
+		hamr.tests(suite, `{binary}:{c.name}`, {
+			doc = "The suite, each case in its own worker process.",
+			tier = c.tier,
+			needs = { `build:{c.name}` },
+			binary = `{dir}/{binary}`,
+			env = { UBSAN_OPTIONS = "halt_on_error=1:print_stacktrace=1" },
+			resources = { tags = { c.name } },
+			stepTimeout = 300,
+			budget = if (c.sanitizer != nil) 30 else 10,
+			paths = kPaths,
+		})
+	}
+}

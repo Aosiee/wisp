@@ -1,13 +1,10 @@
 #pragma once
 
 #include "Wisp/Docking/DockState.h"
+#include "Wisp/Log.h"
 #include "Wisp/Docking/DockSpace.h"
-#include "Wisp/WispLayer.h"
-#include "Platform/WindowCaps.h"
-#include "TinyEngine/Core/Application.h"
-#include "TinyEngine/Core/Window.h"
-#include "TinyEngine/Events/ApplicationEvent.h"
-#include <GLFW/glfw3.h>
+#include "Wisp/Docking/WindowHost.h"
+#include "hearth/platform/Window.h"
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -22,8 +19,9 @@ namespace wisp {
 //     position request - tiling WMs tile it)
 //   - OS windows whose node is gone are destroyed (context + window)
 //   - each window's title tracks its active tab's display name
-//   - secondary windows present their own frame (the event pump stays in
-//     Application::Run - one pump per frame)
+//   - secondary windows present their own frame (the program pumps every
+//     window's events once a frame)
+// The OS windows come from the program's WindowHost (Attach).
 // The main window stays owned by the engine loop; its DockSpace shares
 // the same DockState and rebuilds off the shared model version.
 class DockWindowManager
@@ -34,8 +32,9 @@ public:
 	// Bind the shared state + the main window's projection. Secondary
 	// windows are spawned on the next Update for every non-main node.
 	void Attach(std::shared_ptr<DockState> state, DockSpace* mainProjection,
-		FontCache* fontCache, FontHandle font, float fontSize)
+		FontCache* fontCache, FontHandle font, float fontSize, WindowHost* host)
 	{
+		m_Host = host;
 		m_State = std::move(state);
 		m_MainProjection = mainProjection;
 		m_FontCache = fontCache;
@@ -61,7 +60,7 @@ public:
 		if (!window) return nullptr;
 		if (window->bMain) return mainNative;
 		auto it = m_Windows.find(window->Id);
-		return it != m_Windows.end() && it->second->OSWindow ? it->second->OSWindow->GetNativeWindow() : nullptr;
+		return it != m_Windows.end() && it->second->OSWindow ? it->second->OSWindow->PlatformWindow() : nullptr;
 	}
 
 	// Call once per application frame (from the app layer's OnUpdate).
@@ -80,21 +79,19 @@ public:
 		}
 
 		// 2. Spawn OS windows for nodes that lack one.
-		// An Offscreen app has no
-		// OS windows to project secondary nodes into - its NullWindow has no
-		// native handle (the Wisp context key, the title and position calls
-		// below) and its no-present frame loop runs only the main window's
-		// Wisp update - so the nodes stay in the model, unprojected.
-		const bool offscreen = AppDisplayMode() == TinyEngine::DisplayMode::Offscreen;
+		// A program that opens no windows (an offscreen run, or no host:
+		// the dock tests) has nothing to project secondary nodes into - so
+		// the nodes stay in the model, unprojected.
+		const bool offscreen = !m_Host || !m_Host->CanOpenWindows();
 		for (const dock::WindowNode& w : model.Windows)
 		{
 			if (w.bMain || m_Windows.count(w.Id)) continue;
 			if (offscreen)
 			{
-				if (!m_LoggedOffscreenSkip)
+				if (m_Host && !m_LoggedOffscreenSkip)
 				{
 					m_LoggedOffscreenSkip = true;
-					TE_CORE_INFO(TinyEngine::LogCore, "DOCK: offscreen display mode - secondary dock windows are not opened (the layout keeps them).");
+					HEARTH_LOG_INFO(::wisp::LogWisp, "DOCK: offscreen display mode - secondary dock windows are not opened (the layout keeps them).");
 				}
 				continue;
 			}
@@ -126,15 +123,16 @@ public:
 			if (title != e->Title)
 			{
 				e->Title = title;
-				glfwSetWindowTitle((GLFWwindow*)e->OSWindow->GetNativeWindow(), title.c_str());
+				if (e->OSWindow)
+					e->OSWindow->SetTitle(title);
 			}
 		}
 
-		// 5. Present each secondary window (its own frame). The EVENT pump
-		// stays in Application::Run (one pump per frame - nothing
-		// else calls glfwPollEvents), so OnUpdate only swaps buffers.
+		// 5. Present each secondary window (its own frame). The program pumps
+		// every window's events once a frame, so this only presents.
 		for (auto& [id, e] : m_Windows)
-			e->OSWindow->OnUpdate();
+			if (e->OSWindow)
+				e->OSWindow->Present();
 	}
 
 	// Tear every secondary window down (app shutdown, before the Wisp
@@ -152,24 +150,17 @@ private:
 	struct WindowEntry
 	{
 		dock::NodeId NodeId = 0;
-		TinyEngine::Scope<TinyEngine::Window> OSWindow;
+		std::unique_ptr<HostWindow> OSWindow;
 		WindowContext* Context = nullptr; // owned by UIApplication
 		std::string Title;
 		bool CloseRequested = false;
 	};
 
-	// The app's display mode (Windowed outside an Application - the dock
-	// tests drive the manager without one).
-	static TinyEngine::DisplayMode AppDisplayMode()
-	{
-		TinyEngine::Application* app = TinyEngine::Application::TryGet();
-		return app ? app->GetSpecification().Display : TinyEngine::DisplayMode::Windowed;
-	}
 
 	void Trace(const std::string& msg)
 	{
 		if (m_Trace)
-			TE_CORE_INFO(TinyEngine::LogCore, "DOCK: {0}", msg);
+			HEARTH_LOG_INFO(::wisp::LogWisp, "DOCK: {0}", msg);
 	}
 
 	void SpawnWindow(const dock::WindowNode& w)
@@ -182,30 +173,17 @@ private:
 		// editor; stacking WMs use WM defaults. Where the platform CAN
 		// place windows (X11/Windows) and the node carries a
 		// persisted/tear-out position, use it.
-		// The secondary window
-		// takes the app's display mode (a hidden run's torn-out window stays
-		// hidden; Offscreen never reaches here, see Update).
-		entry->OSWindow = TinyEngine::Window::Create(
-			TinyEngine::WindowProps(entry->Title, (uint32_t)std::max(1.0f, w.Size.x), (uint32_t)std::max(1.0f, w.Size.y), AppDisplayMode()));
-		if (w.Pos.has_value())
-			TinyEngine::TrySetWindowPos((GLFWwindow*)entry->OSWindow->GetNativeWindow(), (int)w.Pos->x, (int)w.Pos->y);
-
-		// Per-window event routing: WM close is DEFERRED (this callback runs
-		// inside the application's GLFW poll - destroying the window here
-		// would return into SwapBuffers on freed state). Everything else
-		// joins the application's single buffered event queue so every
-		// window's events dispatch at the one per-frame drain, where the
-		// Wisp layer resolves this window's context via the handle - instead
-		// of routing inline inside the callback.
+		// The host routes the window's input to Wisp; a WM close is
+		// DEFERRED to the next Update (destroying the window from the
+		// program's event drain would pull it out from under its frame).
 		WindowEntry* raw = entry.get();
-		entry->OSWindow->SetEventCallback([raw](std::unique_ptr<TinyEngine::Event> e) {
-			if (e->GetEventType() == TinyEngine::EventType::WindowClose)
-			{
-				raw->CloseRequested = true;
-				return;
-			}
-			TinyEngine::Application::Get().QueueEvent(std::move(e));
-		});
+		entry->OSWindow = m_Host->OpenWindow(entry->Title, (uint32_t)std::max(1.0f, w.Size.x), (uint32_t)std::max(1.0f, w.Size.y),
+			[raw]() { raw->CloseRequested = true; });
+		if (!entry->OSWindow)
+			return;
+		if (w.Pos.has_value())
+			if (hearth::platform::Window* platformWindow = entry->OSWindow->PlatformWindow())
+				platformWindow->SetPosition((int)w.Pos->x, (int)w.Pos->y);
 
 		// The window's Wisp root: a DockSpace projecting this node.
 		auto dock = std::make_unique<DockSpace>(m_FontCache, m_Font, m_FontSize);
@@ -220,7 +198,7 @@ private:
 			+ root->Slot()[ std::move(bg) ]
 			+ root->Slot()[ std::move(panel) ];
 
-		void* handle = entry->OSWindow->GetNativeWindow();
+		void* handle = entry->OSWindow->PlatformWindow();
 		entry->Context = UIApplication::Get().CreateWindowContext(handle, std::move(root));
 
 		Trace("spawn OS window id=" + std::to_string(w.Id) + " title=\"" + entry->Title + "\"");
@@ -230,13 +208,14 @@ private:
 	void DestroyEntry(WindowEntry& e)
 	{
 		if (e.OSWindow)
-			UIApplication::Get().DestroyWindowContext(e.OSWindow->GetNativeWindow());
+			UIApplication::Get().DestroyWindowContext(e.OSWindow->PlatformWindow());
 		e.OSWindow.reset();
 		e.Context = nullptr;
 	}
 
 	std::shared_ptr<DockState> m_State;
 	DockSpace* m_MainProjection = nullptr;
+	WindowHost* m_Host = nullptr;
 	FontCache* m_FontCache = nullptr;
 	FontHandle m_Font = 0;
 	float m_FontSize = 13.0f;

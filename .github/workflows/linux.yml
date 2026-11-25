@@ -1,0 +1,70 @@
+# Builds Wisp and runs its suite in each configuration it is checked in:
+# GCC and Clang, Debug and Release, without the debug tools, and the
+# address and undefined-behaviour sanitizers.
+#
+# hamr (the suite's test library) is checked out at the commit
+# CMakeLists.txt pins; Hearth, tmath, RapidJSON and stb (and, through them,
+# GLFW, Vulkan-Headers and glm) are fetched at theirs. GLFW builds with its
+# null platform only, so the runner needs no X11 or Wayland libraries.
+name: Linux
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: gcc release,       cxx: g++,     type: Release }
+          - { name: gcc debug,         cxx: g++,     type: Debug }
+          - { name: clang release,     cxx: clang++, type: Release }
+          - { name: no debug tools,    cxx: g++,     type: Debug,          flags: -DWISP_DEBUG_TOOLS=OFF }
+          - { name: address sanitizer, cxx: g++,     type: RelWithDebInfo, flags: -DWISP_SANITIZE=address }
+          - { name: ub sanitizer,      cxx: g++,     type: RelWithDebInfo, flags: -DWISP_SANITIZE=undefined }
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: The pinned hamr commit
+        id: pins
+        run: echo "hamr=$(sed -n 's/^set(WISP_HAMR_COMMIT \([0-9a-f]*\).*/\1/p' CMakeLists.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out hamr
+        uses: actions/checkout@v5
+        with:
+          repository: Aosiee/hamr
+          ref: ${{ steps.pins.outputs.hamr }}
+          path: external/hamr
+
+      # The sanitizers' shadow memory does not fit beside the runner's
+      # default address randomisation.
+      - name: Reduce address randomisation
+        if: contains(matrix.flags, 'WISP_SANITIZE')
+        run: sudo sysctl -w vm.mmap_rnd_bits=28
+
+      - name: Configure
+        run: |
+          ${{ matrix.cxx }} --version
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ matrix.type }} -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
+            -DWISP_HAMR_DIR="$GITHUB_WORKSPACE/external/hamr" -DHEARTH_NULL_PLATFORM_ONLY=ON ${{ matrix.flags }}
+
+      - name: Build
+        run: cmake --build build -j "$(nproc)"
+
+      - name: Test
+        env:
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: |
+          timeout 10m build/wisp_tests
+          timeout 10m build/wisp_text_tests

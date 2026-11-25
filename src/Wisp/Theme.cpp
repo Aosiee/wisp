@@ -1,7 +1,6 @@
 #include "Wisp/Theme.h"
 #include "Wisp/Core.h"
 #include "Wisp/Style.h"
-#include "TinyEngine/Core/Application.h"
 #include <rapidjson/document.h>
 #include <rapidjson/istreamwrapper.h>
 #include <fstream>

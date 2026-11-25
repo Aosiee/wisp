@@ -28,7 +28,7 @@ namespace graph {
 	};
 
 	// The domain's reference-graph projection. The schema implements this
-	// (the Reference Viewer's over the AssetRegistry); the tinytest drives
+	// (a reference viewer over an asset registry, say); the suite drives
 	// the layout with the synthetic implementations.
 	struct RefGraphQuery
 	{

@@ -1,13 +1,10 @@
-#pragma once
-
 // DockModel headless tests: layout normalization, transforms, the size
 // solver, drop semantics, floating-drop guards, serialization (+ v1
-// migration), multi-window invariants, and the seeded fuzz loop. Migrated
-// to doctest: one TEST_CASE per named check; scenario helpers rebuild the
-// layout for each case. Runs from tinytest.
+// migration), multi-window invariants, and the seeded fuzz loop. One case
+// per named check; scenario helpers rebuild the layout for each case.
 
 #include "Wisp/Docking/DockModel.h"
-#include <doctest/doctest.h>
+#include "hamr/test.h"
 
 #include <cmath>
 #include <cstdio>

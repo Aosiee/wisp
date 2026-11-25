@@ -1,6 +1,5 @@
 // The graph view model's implementation.
 
-#include "tepch.h"
 #include "Wisp/Graph/GraphView.h"
 
 #include <algorithm>

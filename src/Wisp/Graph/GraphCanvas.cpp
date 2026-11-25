@@ -1,10 +1,9 @@
 // The graph canvas implementation.
 
-#include "tepch.h"
+#include "hearth/Zone.h"
 #include "Wisp/Graph/GraphCanvas.h"
 
-#include "TinyEngine/Input/Input.h"
-#include "TinyEngine/Input/KeyCodes.h"
+#include "hearth/platform/Keys.h"
 #include "Wisp/Application.h"
 #include "Wisp/Components/Border.h"
 #include "Wisp/Components/SizeBox.h"
@@ -25,6 +24,19 @@
 #include "Wisp/StyleTokens.h"
 
 namespace wisp {
+
+namespace {
+
+namespace key = hearth::platform::key;
+
+// A key held in the focused window (the canvas's modifiers).
+bool KeyHeld(int code)
+{
+	return UIApplication::IsValid() && UIApplication::Get().IsKeyDown(nullptr, code);
+}
+
+} // namespace
+
 namespace graph {
 
 	namespace {
@@ -221,7 +233,7 @@ namespace graph {
 	int GraphCanvas::OnPaint(const PaintArgs& args, const Geometry& geom, DrawList& dl,
 		int layerId, const WidgetStyleContext&) const
 	{
-		TE_PROFILE_SCOPE_C("GraphCanvas - Paint", (uint32_t)TinyEngine::ProfilerChannel::Cpu);
+		HEARTH_ZONE("GraphCanvas - Paint");
 
 		m_Origin = geom.LocalToAbsolute({ 0, 0 });
 		m_Size = geom.LocalSize;
@@ -322,8 +334,8 @@ namespace graph {
 		const HitResult hit = HitTest(m_View, m_Transform, local);
 		if (hit.Kind == HitResult::Kind::Node)
 		{
-			const bool shift = TinyEngine::Input::IsKeyPressed(TE_KEY_LEFT_SHIFT)
-				|| TinyEngine::Input::IsKeyPressed(TE_KEY_RIGHT_SHIFT);
+			const bool shift = KeyHeld(key::LeftShift)
+				|| KeyHeld(key::RightShift);
 			if (m_Schema && m_Schema->CanStartConnect(hit.Node))
 			{
 				const ViewNode* node = FindViewNode(hit.Node);
@@ -336,8 +348,8 @@ namespace graph {
 				}
 			}
 
-			const bool ctrl = TinyEngine::Input::IsKeyPressed(TE_KEY_LEFT_CONTROL)
-				|| TinyEngine::Input::IsKeyPressed(TE_KEY_RIGHT_CONTROL);
+			const bool ctrl = KeyHeld(key::LeftControl)
+				|| KeyHeld(key::RightControl);
 			m_CtrlAtDown = ctrl;
 			m_PressedSelected = false;
 			if (ctrl && m_Selected.count(hit.Node))
@@ -430,7 +442,7 @@ namespace graph {
 			glm::vec2 delta = (absPos - m_Origin - m_Anchor) / ZoomScale(m_Transform.ZoomLevel);
 			// The pressed node lands on the grid (Alt drags freely).
 			const float grid = m_Schema ? m_Schema->SnapGrid() : 0.0f;
-			const bool alt = TinyEngine::Input::IsKeyPressed(TE_KEY_LEFT_ALT) || TinyEngine::Input::IsKeyPressed(TE_KEY_RIGHT_ALT);
+			const bool alt = KeyHeld(key::LeftAlt) || KeyHeld(key::RightAlt);
 			if (grid > 0.0f && !alt && !m_DragStart.empty())
 				delta = SnapToGrid(m_DragStart.front().second + delta, grid) - m_DragStart.front().second;
 			for (const auto& [id, start] : m_DragStart)
@@ -501,8 +513,8 @@ namespace graph {
 			{
 				if (m_MovedPastThreshold)
 				{
-					const bool ctrl = TinyEngine::Input::IsKeyPressed(TE_KEY_LEFT_CONTROL)
-						|| TinyEngine::Input::IsKeyPressed(TE_KEY_RIGHT_CONTROL);
+					const bool ctrl = KeyHeld(key::LeftControl)
+						|| KeyHeld(key::RightControl);
 					std::vector<NodeId> hitNodes;
 					const glm::vec2 a = ScreenToWorld(m_AnchorScreen);
 					const glm::vec2 b = ScreenToWorld(m_LastMouse);
@@ -598,14 +610,14 @@ namespace graph {
 	{
 		const bool ctrl = (mods & 2) != 0;
 		const bool shift = (mods & 1) != 0;
-		if (key == TE_KEY_ESCAPE && m_Interaction == Interaction::Connect)
+		if (key == key::Escape && m_Interaction == Interaction::Connect)
 		{
 			EndInteraction();
 			return Reply::Handled_().ReleaseCapture();
 		}
 		if (m_Schema && m_Schema->OnKey(key))
 			return Reply::Handled_();
-		if (ctrl && key == TE_KEY_A && m_Schema)
+		if (ctrl && key == key::A && m_Schema)
 		{
 			m_Selected.clear();
 			for (const ViewNode& node : m_View.Nodes)
@@ -614,19 +626,19 @@ namespace graph {
 			NotifySelection();
 			return Reply::Handled_();
 		}
-		if (key == TE_KEY_ESCAPE && !m_Selected.empty())
+		if (key == key::Escape && !m_Selected.empty())
 		{
 			m_Selected.clear();
 			NotifySelection();
 			return Reply::Handled_();
 		}
-		if ((key == TE_KEY_LEFT || key == TE_KEY_RIGHT || key == TE_KEY_UP || key == TE_KEY_DOWN) && !ctrl
+		if ((key == key::Left || key == key::Right || key == key::Up || key == key::Down) && !ctrl
 			&& m_Schema && !m_Selected.empty() && m_Interaction == Interaction::None)
 		{
 			const float grid = m_Schema->SnapGrid();
 			const float step = (grid > 0.0f ? grid : 8.0f) * (shift ? 4.0f : 1.0f);
-			const glm::vec2 delta = key == TE_KEY_LEFT ? glm::vec2(-step, 0.0f) : key == TE_KEY_RIGHT ? glm::vec2(step, 0.0f)
-				: key == TE_KEY_UP ? glm::vec2(0.0f, -step) : glm::vec2(0.0f, step);
+			const glm::vec2 delta = key == key::Left ? glm::vec2(-step, 0.0f) : key == key::Right ? glm::vec2(step, 0.0f)
+				: key == key::Up ? glm::vec2(0.0f, -step) : glm::vec2(0.0f, step);
 			std::vector<std::pair<NodeId, glm::vec2>> moved;
 			for (ViewNode& node : m_View.Nodes)
 				if (m_Selected.count(node.Id) && m_Schema->NodeMovable(node.Id))
@@ -640,12 +652,12 @@ namespace graph {
 			m_Schema->OnNodesMoved(moved);
 			return Reply::Handled_();
 		}
-		if (key == TE_KEY_HOME)
+		if (key == key::Home)
 		{
 			FrameAll();
 			return Reply::Handled_();
 		}
-		if (key == TE_KEY_F)
+		if (key == key::F)
 		{
 			FrameSelection();
 			return Reply::Handled_();

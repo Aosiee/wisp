@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Math/Colour.h"
+#include "tmath/Colour.h"
 
 #include <glm/glm.hpp>
 #include <cctype>
@@ -15,8 +15,8 @@ namespace wisp {
 // the HSV <-> RGB conversions live in Math/Colour.h; the CMYK and hex
 // conversions below are the picker's own.
 
-using TinyEngine::Math::RgbToHsv;
-using TinyEngine::Math::HsvToRgb;
+using tmath::RgbToHsv;
+using tmath::HsvToRgb;
 
 // ---- CMYK (0..1 per component) ---------------------------------------------
 

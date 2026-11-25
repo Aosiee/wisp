@@ -1,9 +1,7 @@
 // The graph view model's pure-piece tests (the two-sided layout in
-// both modes + the hit test). Registered in tinytest.
+// both modes + the hit test).
 
-#pragma once
-
-#include "doctest/doctest.h"
+#include "hamr/test.h"
 #include "Wisp/Graph/GraphCanvas.h"
 #include "Wisp/Graph/GraphLayout.h"
 #include "Wisp/Graph/GraphView.h"
@@ -167,12 +165,12 @@ namespace graph_tests {
 		NodeMap map;
 		GraphView view = Layout(query, 1, 3, 20, false, map);
 
-		CHECK(RequireNode(view, 1)->Position.x == doctest::Approx(0.0f));
-		CHECK(RequireNode(view, 2)->Position.x == doctest::Approx(-kColumnStride));
-		CHECK(RequireNode(view, 3)->Position.x == doctest::Approx(-kColumnStride));
-		CHECK(RequireNode(view, 5)->Position.x == doctest::Approx(-2.0f * kColumnStride));
-		CHECK(RequireNode(view, 4)->Position.x == doctest::Approx(kColumnStride));
-		CHECK(RequireNode(view, 6)->Position.x == doctest::Approx(2.0f * kColumnStride));
+		CHECK(RequireNode(view, 1)->Position.x == hamr::test::Approx(0.0f));
+		CHECK(RequireNode(view, 2)->Position.x == hamr::test::Approx(-kColumnStride));
+		CHECK(RequireNode(view, 3)->Position.x == hamr::test::Approx(-kColumnStride));
+		CHECK(RequireNode(view, 5)->Position.x == hamr::test::Approx(-2.0f * kColumnStride));
+		CHECK(RequireNode(view, 4)->Position.x == hamr::test::Approx(kColumnStride));
+		CHECK(RequireNode(view, 6)->Position.x == hamr::test::Approx(2.0f * kColumnStride));
 
 		// The two depth-1 dependencies share the column (the different rows).
 		CHECK(RequireNode(view, 2)->Position.x == RequireNode(view, 3)->Position.x);
@@ -205,7 +203,7 @@ namespace graph_tests {
 
 		// The asset 2 is once, at its minimum depth 1 (not 2 via the 3).
 		CHECK(NodesOfAsset(view, map, 2).size() == 1);
-		CHECK(RequireNode(view, 2)->Position.x == doctest::Approx(-kColumnStride));
+		CHECK(RequireNode(view, 2)->Position.x == hamr::test::Approx(-kColumnStride));
 
 		// The 3 -> 2 edge is a cross-link at the same column (still on the
 		// dependency side, so it keeps the Outgoing family).
@@ -230,7 +228,7 @@ namespace graph_tests {
 		const std::vector<const ViewNode*> nodes = NodesOfAsset(view, map, 2);
 		REQUIRE(nodes.size() == 1);
 		CHECK((nodes[0]->Flags & NodeFlags::BothSides) != 0);
-		CHECK(nodes[0]->Position.x == doctest::Approx(-kColumnStride));
+		CHECK(nodes[0]->Position.x == hamr::test::Approx(-kColumnStride));
 
 		// The 2 -> 4 cross-side span and the 4 -> 1 chain are normal edges.
 		CHECK((RequireEdge(view, 2, 4)->Flags & EdgeFlags::BackEdge) == 0);
@@ -249,7 +247,7 @@ namespace graph_tests {
 		GraphView view = Layout(query, 1, 3, 20, false, map);
 
 		CHECK(NodesOfAsset(view, map, 2).size() == 1);
-		CHECK(RequireNode(view, 2)->Position.x == doctest::Approx(-kColumnStride));
+		CHECK(RequireNode(view, 2)->Position.x == hamr::test::Approx(-kColumnStride));
 		CHECK((RequireNode(view, 2)->Flags & NodeFlags::BothSides) != 0);
 		CHECK((RequireEdge(view, 1, 2)->Flags & EdgeFlags::BackEdge) == 0);
 		CHECK((RequireEdge(view, 2, 1)->Flags & EdgeFlags::BackEdge) != 0);
@@ -268,7 +266,7 @@ namespace graph_tests {
 		GraphView view = Layout(query, 1, 3, 20, false, map);
 
 		CHECK(view.Nodes.size() == 3);
-		CHECK(RequireNode(view, 3)->Position.x == doctest::Approx(-2.0f * kColumnStride));
+		CHECK(RequireNode(view, 3)->Position.x == hamr::test::Approx(-2.0f * kColumnStride));
 		const ViewEdge* edge = RequireEdge(view, 3, 2);
 		CHECK((edge->Flags & EdgeFlags::BackEdge) != 0);
 	}
@@ -298,7 +296,7 @@ namespace graph_tests {
 				overflow = &node;
 		REQUIRE(overflow != nullptr);
 		CHECK(overflow->Title == "+5 more");
-		CHECK(overflow->Position.x == doctest::Approx(-kColumnStride));
+		CHECK(overflow->Position.x == hamr::test::Approx(-kColumnStride));
 		CHECK((overflow->Flags & NodeFlags::OverflowLeft) != 0);
 		CHECK(map.at(overflow->Id) == 1);
 
@@ -323,7 +321,7 @@ namespace graph_tests {
 			if (node.Flags & NodeFlags::Overflow)
 				overflow = &node;
 		REQUIRE(overflow != nullptr);
-		CHECK(overflow->Position.x == doctest::Approx(kColumnStride));
+		CHECK(overflow->Position.x == hamr::test::Approx(kColumnStride));
 		CHECK((overflow->Flags & NodeFlags::OverflowLeft) == 0);
 		// The dependent-side overflow edge points at the parent.
 		const ViewEdge* edge = RequireEdge(view, overflow->Id, 1);
@@ -348,8 +346,8 @@ namespace graph_tests {
 		const std::vector<const ViewNode*> fours = NodesOfAsset(view, map, 4);
 		REQUIRE(fours.size() == 2);
 		CHECK(fours[0]->Id != fours[1]->Id);
-		CHECK(fours[0]->Position.x == doctest::Approx(-2.0f * kColumnStride));
-		CHECK(fours[1]->Position.x == doctest::Approx(-2.0f * kColumnStride));
+		CHECK(fours[0]->Position.x == hamr::test::Approx(-2.0f * kColumnStride));
+		CHECK(fours[1]->Position.x == hamr::test::Approx(-2.0f * kColumnStride));
 
 		CHECK(view.Nodes.size() == 5); // the root, the 2, the 3, the two 4s
 	}
@@ -406,8 +404,8 @@ namespace graph_tests {
 		const std::vector<const ViewNode*> threes = NodesOfAsset(view, map, 3);
 		REQUIRE(twos.size() == 1);
 		REQUIRE(threes.size() == 1);
-		CHECK(twos[0]->Position.x == doctest::Approx(-kColumnStride));
-		CHECK(threes[0]->Position.x == doctest::Approx(kColumnStride));
+		CHECK(twos[0]->Position.x == hamr::test::Approx(-kColumnStride));
+		CHECK(threes[0]->Position.x == hamr::test::Approx(kColumnStride));
 	}
 
 	TEST_CASE("graph layout: tree mode collapses the per-occurrence overflow")
@@ -431,7 +429,7 @@ namespace graph_tests {
 				overflow = &node;
 		REQUIRE(overflow != nullptr);
 		CHECK(overflow->Title == "+2 more");
-		CHECK(overflow->Position.x == doctest::Approx(-2.0f * kColumnStride));
+		CHECK(overflow->Position.x == hamr::test::Approx(-2.0f * kColumnStride));
 		CHECK(map.at(overflow->Id) == 2);
 	}
 
@@ -537,8 +535,8 @@ namespace graph_tests {
 		CHECK(HitTest(view, panned, { 60.0f, 80.0f }).Kind == HitResult::Kind::Canvas);
 
 		// The zoom level table.
-		CHECK(ZoomScale(kDefaultZoomLevel) == doctest::Approx(1.0f));
-		CHECK(ZoomScale(0) == doctest::Approx(0.10f));
+		CHECK(ZoomScale(kDefaultZoomLevel) == hamr::test::Approx(1.0f));
+		CHECK(ZoomScale(0) == hamr::test::Approx(0.10f));
 
 		// The world point 30 units above the edge line: inside the pick
 		// band (60 world units) at the 0.10 zoom, outside (6 world units)
@@ -635,7 +633,13 @@ namespace graph_tests {
 		c.Id = 3;
 		c.Position = { 0.0f, 200.0f };
 		view.Nodes = { a, b, c };
-		view.Edges = { { 1, 2 }, { 2, 1 }, { 1, 3 }, { 1, 3 }, { 3, 2 } };
+		const auto edge = [](NodeId from, NodeId to) {
+			ViewEdge e;
+			e.From = from;
+			e.To = to;
+			return e;
+		};
+		view.Edges = { edge(1, 2), edge(2, 1), edge(1, 3), edge(1, 3), edge(3, 2) };
 
 		glm::vec2 p0, p1, p2, p3;
 		// c -> b leaves c through its top edge, which a -> c twice meets too:
@@ -643,8 +647,8 @@ namespace graph_tests {
 		// one spacing right of the centre line's exit (80).
 		EdgeControlPoints(view, 4, p0, p1, p2, p3);
 		CHECK(EdgeLane(view, 4) == 0);
-		CHECK(p0.y == doctest::Approx(200.0f));
-		CHECK(p0.x == doctest::Approx(94.0f));
+		CHECK(p0.y == hamr::test::Approx(200.0f));
+		CHECK(p0.x == hamr::test::Approx(94.0f));
 		CHECK(p1 == glm::mix(p0, p3, 1.0f / 3.0f));
 
 		// A two-way pair: each on the right of its own direction, so the two
@@ -654,19 +658,19 @@ namespace graph_tests {
 		glm::vec2 q0, q1, q2, q3;
 		EdgeControlPoints(view, 0, p0, p1, p2, p3);
 		EdgeControlPoints(view, 1, q0, q1, q2, q3);
-		CHECK(p0.x == doctest::Approx(100.0f));
-		CHECK(p3.x == doctest::Approx(300.0f));
-		CHECK(p0.y == doctest::Approx(27.0f)); // right of +x is +y
-		CHECK(p3.y == doctest::Approx(27.0f));
-		CHECK(q0.y == doctest::Approx(13.0f));
+		CHECK(p0.x == hamr::test::Approx(100.0f));
+		CHECK(p3.x == hamr::test::Approx(300.0f));
+		CHECK(p0.y == hamr::test::Approx(27.0f)); // right of +x is +y
+		CHECK(p3.y == hamr::test::Approx(27.0f));
+		CHECK(q0.y == hamr::test::Approx(13.0f));
 
 		// Repeated edges in one direction: lanes 1 and 2.
 		CHECK(EdgeLane(view, 2) == 1);
 		CHECK(EdgeLane(view, 3) == 2);
 		EdgeControlPoints(view, 2, p0, p1, p2, p3);
 		EdgeControlPoints(view, 3, q0, q1, q2, q3);
-		CHECK(std::abs(p0.x - q0.x) == doctest::Approx(14.0f));
-		CHECK(std::abs(p3.x - q3.x) == doctest::Approx(14.0f)); // parallel, not crossing
+		CHECK(std::abs(p0.x - q0.x) == hamr::test::Approx(14.0f));
+		CHECK(std::abs(p3.x - q3.x) == hamr::test::Approx(14.0f)); // parallel, not crossing
 	}
 
 	TEST_CASE("graph canvas: the frame transform keeps to its zoom range")
@@ -707,7 +711,7 @@ namespace graph_tests {
 
 		glm::vec2 p0, p1, p2, p3;
 		EdgeControlPoints(view, 0, p0, p1, p2, p3);
-		CHECK(p0.y == doctest::Approx(30.0f));
+		CHECK(p0.y == hamr::test::Approx(30.0f));
 		CHECK(p1.y < p0.y); // the middle bows up over the gap
 		CHECK(p2.y < p3.y);
 	}
@@ -787,14 +791,14 @@ namespace graph_tests {
 		float totalArea = 0.0f;
 		for (const TreemapCell& cell : cells)
 			totalArea += cell.Rect.z * cell.Rect.w;
-		CHECK(totalArea == doctest::Approx(60000.0f).epsilon(0.001));
+		CHECK(totalArea == hamr::test::Approx(60000.0f).epsilon(0.001));
 
 		for (const TreemapCell& cell : cells)
 		{
 			if (cell.Id == 2)
-				CHECK(cell.Rect.z * cell.Rect.w == doctest::Approx(20000.0f).epsilon(0.01));
+				CHECK(cell.Rect.z * cell.Rect.w == hamr::test::Approx(20000.0f).epsilon(0.01));
 			else if (cell.Id == 3)
-				CHECK(cell.Rect.z * cell.Rect.w == doctest::Approx(30000.0f).epsilon(0.01));
+				CHECK(cell.Rect.z * cell.Rect.w == hamr::test::Approx(30000.0f).epsilon(0.01));
 		}
 	}
 
@@ -879,10 +883,10 @@ namespace graph_tests {
 		CHECK(SnapToGrid({ 23.0f, -9.0f }, 16.0f) == glm::vec2(16.0f, -16.0f));
 		CHECK(SnapToGrid({ 23.0f, -9.0f }, 0.0f) == glm::vec2(23.0f, -9.0f));
 		const glm::vec2 right = NodeBorderPoint(node, { 500.0f, 25.0f });
-		CHECK(right.x == doctest::Approx(100.0f));
-		CHECK(right.y == doctest::Approx(25.0f));
+		CHECK(right.x == hamr::test::Approx(100.0f));
+		CHECK(right.y == hamr::test::Approx(25.0f));
 		const glm::vec2 up = NodeBorderPoint(node, { 50.0f, -400.0f });
-		CHECK(up.y == doctest::Approx(0.0f));
+		CHECK(up.y == hamr::test::Approx(0.0f));
 	}
 
 	TEST_CASE("graph: the minimap fits the nodes and the view, aspect kept")
@@ -895,14 +899,14 @@ namespace graph_tests {
 		const MinimapLayout layout = ComputeMinimap(view, { 0.0f, 0.0f, 400.0f, 200.0f }, { 200.0f, 200.0f });
 		REQUIRE(layout.Valid);
 		CHECK(layout.WorldMin == glm::vec2(0.0f));
-		CHECK(layout.Scale == doctest::Approx(0.2f)); // 1000 wide into 200
-		CHECK(layout.Size.x == doctest::Approx(200.0f));
-		CHECK(layout.Size.y == doctest::Approx(60.0f));
+		CHECK(layout.Scale == hamr::test::Approx(0.2f)); // 1000 wide into 200
+		CHECK(layout.Size.x == hamr::test::Approx(200.0f));
+		CHECK(layout.Size.y == hamr::test::Approx(60.0f));
 		// A view reaching past the nodes widens the bounds, by a margin at most.
 		const MinimapLayout wide = ComputeMinimap(view, { -100.0f, 0.0f, 400.0f, 200.0f }, { 200.0f, 200.0f });
-		CHECK(wide.WorldMin.x == doctest::Approx(-100.0f));
+		CHECK(wide.WorldMin.x == hamr::test::Approx(-100.0f));
 		const MinimapLayout far = ComputeMinimap(view, { -5000.0f, 0.0f, 400.0f, 200.0f }, { 200.0f, 200.0f });
-		CHECK(far.WorldMin.x == doctest::Approx(-190.0f)); // 15% of 1000 + 40
+		CHECK(far.WorldMin.x == hamr::test::Approx(-190.0f)); // 15% of 1000 + 40
 		CHECK_FALSE(ComputeMinimap(GraphView{}, { 0.0f, 0.0f, 1.0f, 1.0f }, { 10.0f, 10.0f }).Valid);
 	}
 

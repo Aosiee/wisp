@@ -4,8 +4,6 @@
 #include "Wisp/DrawList.h"
 #include "Wisp/Batcher.h"
 #include "Wisp/FontCache.h"
-#include "TinyEngine/Renderer/UIImageHandle.h"
-#include "TinyEngine/Renderer/Debug/DebugDrawCommon.h" // the screen-overlay scratch's element type
 #include <chrono>
 #include <functional>
 #include <memory>
@@ -15,11 +13,26 @@
 #include <unordered_map>
 #include <vector>
 
+namespace hearth::platform { class Platform; }
+
 namespace wisp {
 
 class FontCache;
-class RendererVulkan;
-struct WispWindowRenderState;
+
+// What the program gives Wisp when it starts.
+struct UIApplicationDesc
+{
+	FontCache* Fonts = nullptr;
+	// The window system: the clipboard, what windows may do, the windows'
+	// sizes and key state. Null in a program with no windows.
+	hearth::platform::Platform* Platform = nullptr;
+	// Textures and the per-window render state (Renderer.h).
+	std::unique_ptr<IUIRenderer> Renderer;
+	// Called before Wisp changes its list of window contexts: a renderer
+	// recording on another thread may be reading it. Empty when nothing
+	// records off the thread that calls Wisp.
+	std::function<void()> WaitForRenderIdle;
+};
 
 // One OS window's worth of Wisp state. Everything that used to live on
 // UIApplication as a single-window member splits into: per-context here
@@ -29,9 +42,9 @@ struct WispWindowRenderState;
 // see there).
 struct WindowContext
 {
-	void* Window = nullptr;                  // GLFWwindow* (opaque - no GLFW include here)
+	void* Window = nullptr;                  // the platform window (a hearth::platform::Window*, opaque here)
 	std::unique_ptr<Widget> Root;            // per-window root (DockSpace or shell VBox)
-	WispWindowRenderState* RenderState = nullptr; // per-window staging/command buffer/viewport
+	std::unique_ptr<WindowRenderState> RenderState; // the renderer's own, per window
 
 	// Per-window draw list + arrange cache (Tick is per context).
 	::wisp::DrawList DrawList;
@@ -61,9 +74,8 @@ struct WindowContext
 	// dismisses the popups instead of reaching the widget beneath.
 	int ModalPopupCount = 0;
 
-	// Cursor (GLFW cursors are per-window objects).
+	// Cursor (the platform window keeps its cursor objects).
 	CursorType CurrentCursor = CursorType::Default;
-	void* CachedCursor = nullptr;
 
 	// Tooltip dwell (per window - hover differs per window).
 	Widget* TooltipTarget = nullptr;
@@ -107,16 +119,50 @@ enum class FontRole : uint8_t { Regular, Medium, SemiBold, Mono, Icons, Count };
 class UIApplication
 {
 public:
-	// Init/Shutdown — creates/destroys the renderer and registers the draw callback.
-	// The app only needs to call these once; everything else is automatic.
-	static void Init(FontCache* fontCache);
+	// Starts Wisp with what the program gives it; Shutdown ends it (the
+	// window contexts and the renderer, before the program's device goes).
+	static void Init(UIApplicationDesc desc);
 	static void Shutdown();
-	// Font hot reload (re-parse + atlas rebuild + relayout).
-	static bool ReloadFont(const std::string& assetPath);
 	static UIApplication& Get() { return *s_Instance; }
 	static bool IsValid() { return s_Instance != nullptr; }
 
+	// One window's frame (the thread that owns the UI, once per window per
+	// frame): ticks, lays out, paints and batches the window's widgets for
+	// `frameIndex` (into `arena`, whose slot for that frame the caller has
+	// reset; null: the global allocator). `width`/`height` are the
+	// framebuffer's pixels. The first window to arrive binds the default
+	// context.
+	void UpdateWindow(void* window, uint32_t width, uint32_t height, uint32_t frameIndex, FrameArena* arena);
+	// The batches UpdateWindow built for the frame in `frameSlot` (index %
+	// 2) and the window's render state, for the renderer to record; null
+	// when the window has no context or nothing to draw.
+	const BatchedDrawData* GetFrameBatches(void* window, uint32_t frameSlot, WindowRenderState** state) const;
+
+	// Font hot reload: the face loaded from `path` re-parsed from its new
+	// bytes (the atlas rebuilds and the text re-measures).
+	bool ReloadFont(const std::string& path, const uint8_t* bytes, size_t size);
+
 	FontCache* GetFontCache() const { return m_FontCache; }
+	hearth::platform::Platform* GetPlatform() const { return m_Platform; }
+	// What the window system allows (false with no Wisp or no platform:
+	// the dock tests run without either).
+	static bool CanPlaceWindows();
+	static bool CanTrackGlobalCursor();
+	IUIRenderer& GetRenderer() const { return *m_Renderer; }
+	// Whether a key (hearth/platform/Keys.h) is held in `window` (the
+	// focused window's when null).
+	bool IsKeyDown(void* window, int key) const;
+
+	// The UI scale: the widget tree lays out in logical units, which the
+	// renderer scales by this onto the window (the font cache rasterizes at
+	// it too). Set by the host, on the game thread.
+	void SetUiScale(float scale);
+	float GetUiScale() const { return m_UiScale; }
+	// Whether each UI batch gets its own GPU timing scope (off: one label
+	// for the whole UI, so the batches do not fill the frame's timestamp
+	// pool).
+	void SetGpuTimeBatches(bool enabled) { m_GpuTimeBatches = enabled; }
+	bool GetGpuTimeBatches() const { return m_GpuTimeBatches; }
 	// (A registered flag, not InvalidFont: FontCache hands out handle 0 to
 	// its first face.)
 	void SetFont(FontRole role, FontHandle font) { m_Fonts[(size_t)role] = font; m_FontSet[(size_t)role] = true; }
@@ -142,7 +188,7 @@ public:
 	WindowContext* GetFocusedContext() const;
 
 	// Creates a context for a secondary OS window (each WindowNode
-	// projects into one). The app owns the GLFWwindow; Wisp owns the root.
+	// projects into one). The app owns the window; Wisp owns the root.
 	WindowContext* CreateWindowContext(void* window, std::unique_ptr<Widget> root, float contentScale = 1.0f);
 
 	// Tears a context down (its root, popups, capture, cursor object). The
@@ -160,7 +206,7 @@ public:
 	void OnWindowFocusChanged(void* window, bool focused);
 
 	// Cursor entered/left a window: the authoritative "which window is the
-	// pointer over" signal (cross-window pick tracking - GLFW cursor
+	// pointer over" signal (cross-window pick tracking - the platform's cursor
 	// positions alone are unreliable on Wayland for non-hovered windows).
 	void OnCursorEntered(void* window, bool entered);
 
@@ -170,7 +216,9 @@ public:
 
 	// Polls every context's OS cursor position (cheap; keeps static-mouse
 	// windows in sync without relying on move events).
-	void SyncMousePositions();
+	// Once a frame: every context's pointer from `pointerPosition` (the
+	// host's warp-immune cursor position, in the main window's pixels).
+	void SyncMousePositions(const glm::vec2& pointerPosition);
 
 	// Popup system — window-local; the default context keeps the
 	// historical no-window signatures. modal popups (the default -
@@ -191,7 +239,7 @@ public:
 	// instead; UIApplication flushes it after the click dispatch completes.
 	void RequestDismissPopups() { m_PendingDismissPopups = true; }
 
-	// Input — per window; events carry their GLFWwindow*. The default
+	// Input — per window; events carry their platform window. The default
 	// context keeps the historical no-window signatures for compat.
 	void SetMousePosition(const glm::vec2& screenPos);
 	void SetMousePosition(void* window, const glm::vec2& screenPos);
@@ -339,11 +387,6 @@ public:
 	// Textured quads (Wisp images): app-managed textures on the shared
 	// renderer. Returns 0 on failure; DestroyTexture is a no-op for 0.
 	uint64_t CreateTexture(uint32_t width, uint32_t height, const uint8_t* rgbaData);
-	// Wrap an engine-acquired
-	// UIImageHandle (a framebuffer colour attachment or a texture's image)
-	// as a samplable texture; the caller keeps ownership of the image
-	// (DestroyTexture frees only the wrapper).
-	uint64_t WrapUIImageHandle(const TinyEngine::UIImageHandle& handle);
 	void UpdateTexture(uint64_t handle, uint32_t x, uint32_t y, uint32_t width, uint32_t height, const uint8_t* rgbaData);
 	void DestroyTexture(uint64_t handle);
 
@@ -396,9 +439,13 @@ private:
 
 	// One renderer for the whole app (shared pipelines/atlas/descriptor
 	// sets); per-window transient state lives in WindowContext::RenderState.
-	std::unique_ptr<RendererVulkan> m_Renderer;
+	std::unique_ptr<IUIRenderer> m_Renderer;
+	std::function<void()> m_WaitForRenderIdle;
 
 	FontCache* m_FontCache = nullptr;
+	hearth::platform::Platform* m_Platform = nullptr;
+	float m_UiScale = 1.0f;
+	bool m_GpuTimeBatches = false;
 	FontHandle m_Fonts[(size_t)FontRole::Count] = {};
 	bool m_FontSet[(size_t)FontRole::Count] = {};
 
@@ -434,11 +481,6 @@ private:
 	// Animation
 	float  m_AnimTime = 0.0f;
 	int    m_HeldModifiers = 0; // GetHeldModifiers
-
-	// The debug-draw screen sub-batch's per-frame build scratch (Init's
-	// update callback; a member, not a function-local static). Game thread
-	// only; reused for its capacity.
-	std::vector<TinyEngine::DebugDrawVertex> m_ScreenOverlayScratch;
 };
 
 } // namespace wisp

@@ -51,6 +51,11 @@ public:
 	FontCache();
 	~FontCache();
 
+	// The UI scale the glyphs rasterize at (1 = the logical size). A change
+	// drops the glyph cache and the atlas, which rebuild lazily.
+	void SetUiScale(float scale) { m_UiScale = scale; }
+	float GetUiScale() const { return m_UiScale; }
+
 	// Load a font from memory. Returns a handle for subsequent API calls.
 	FontHandle AddFont(const uint8_t* ttfData, size_t ttfSize, const std::string& sourcePath = {});
 
@@ -130,8 +135,9 @@ private:
 	// Atlas
 	std::vector<uint8_t> m_AtlasData;
 
-	// The scale the glyphs were last rasterized at (the cache + the
-	// atlas reset when ui.scale changes).
+	// The scale to rasterize at, and the one the cached glyphs and the
+	// atlas were rasterized at (they reset when the two differ).
+	float m_UiScale = 1.0f;
 	float m_RasterizedScale = 1.0f;
 	uint32_t m_AtlasWidth  = 512;
 	uint32_t m_AtlasHeight = 512;

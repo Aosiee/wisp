@@ -15,15 +15,15 @@ inline void MakeVertex(BatchedVertex& v, float x, float y, float u, float vv,
 	v.col[0] = r; v.col[1] = g; v.col[2] = b; v.col[3] = a;
 }
 
-inline BatchedDrawData BatchDrawList(const DrawList& drawList, TinyEngine::FrameAllocator* arena, uint32_t slot)
+inline BatchedDrawData BatchDrawList(const DrawList& drawList, FrameArena* arena, uint32_t slot)
 {
 	// The per-frame batch output builds into the frame arena
 	// (one slot's worth - the slot is reset by the caller before the
 	// build). A null arena falls back to the global allocator.
-	using VA = TinyEngine::FrameArenaAllocator<BatchedVertex>;
-	using IA = TinyEngine::FrameArenaAllocator<uint32_t>;
-	using BA = TinyEngine::FrameArenaAllocator<BatchedBatch>;
-	using CA = TinyEngine::FrameArenaAllocator<glm::vec4>;
+	using VA = FrameArenaAllocator<BatchedVertex>;
+	using IA = FrameArenaAllocator<uint32_t>;
+	using BA = FrameArenaAllocator<BatchedBatch>;
+	using CA = FrameArenaAllocator<glm::vec4>;
 	BatchedDrawData output{
 		std::vector<BatchedVertex, VA>(VA(arena, slot)),
 		std::vector<uint32_t, IA>(IA(arena, slot)),

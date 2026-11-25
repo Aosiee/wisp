@@ -4,7 +4,7 @@
 // computation (the inclusive = the full dependency closure summed once
 // per shared dependency) and the squarified treemap layout. The
 // Reference Viewer's schema implements the SizeQuery over the
-// AssetRegistry; the tinytest drives both with the synthetic queries.
+// AssetRegistry; the suite drives both with synthetic queries.
 
 #pragma once
 

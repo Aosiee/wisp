@@ -72,7 +72,7 @@ struct DrawElement
 
 	// Text
 	std::string     TextString;      // copy at paint time
-	glm::vec2       TextAtlasUV[4];  // glyph quad UVs in atlas
+	glm::vec2       TextAtlasUV[4] = { { 0.0f, 0.0f }, { 0.0f, 0.0f }, { 0.0f, 0.0f }, { 0.0f, 0.0f } }; // glyph quad UVs in atlas
 	float           TextAdvance = 0.0f;
 	float           TextHeight = 0.0f;   // glyph quad height in pixels
 

@@ -1,6 +1,5 @@
 // The two-sided layout implementation.
 
-#include "tepch.h"
 #include "Wisp/Graph/GraphLayout.h"
 
 #include <algorithm>

@@ -1,21 +1,10 @@
 #include "Wisp/Application.h"
+#include "Wisp/Log.h"
 #include "Wisp/Batcher.h"
-#include "Wisp/RendererVulkan.h"
-#include "Math/Projection.h" // the one ortho convention
-#include "TinyEngine/Core/HotReloadClient.h"
-#include "TinyEngine/Asset/Load/TinyAssetLoader.h"
-#include "DebugDraw/DebugDraw.h"
-#include "TinyEngine/Renderer/Debug/DebugDrawCommon.h"
-#include "TinyEngine/Renderer/Debug/RendererDebug.h"
+#include "tmath/Projection.h" // the one ortho convention
 #include "Wisp/Widgets.h"
-#include "TinyEngine/Renderer/RenderPassContext.h"
-#include "TinyEngine/Renderer/GraphicsContext.h"
-#include "TinyEngine/Core/Application.h"
-#include "TinyEngine/RHI/RhiDevice.h"
-#include "TinyEngine/CVar/EngineCVars.h" // for GetWindow()
-#include "TinyEngine/Memory/MemorySubsystem.h"
-#include "TinyEngine/Input/Input.h"
-#include <GLFW/glfw3.h>
+#include "hearth/platform/Platform.h"
+#include "hearth/platform/Window.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
 #include <chrono>
@@ -25,180 +14,140 @@ namespace wisp {
 
 UIApplication* UIApplication::s_Instance = nullptr;
 
+// The debug overlays (the focus registry, the reflector's selection) draw
+// above everything a window paints: the popups (10000) and the drag ghost
+// (90000).
+static constexpr int kOverlayLayer = 95000;
+
+namespace {
+
+// A window's position on the desktop, where the window system reports one
+// (X11, Win32; never Wayland): every caller has a nullopt path.
+std::optional<std::pair<int, int>> WindowPosition(void* window)
+{
+	return window ? static_cast<const hearth::platform::Window*>(window)->Position() : std::nullopt;
+}
+
+} // namespace
+
 UIApplication::UIApplication()  = default;
 UIApplication::~UIApplication() = default;
 
-void UIApplication::Init(FontCache* fontCache)
+void UIApplication::Init(UIApplicationDesc desc)
 {
 	if (s_Instance) return;
 	s_Instance = new UIApplication();
-	s_Instance->m_FontCache = fontCache;
-
-	s_Instance->m_Renderer = std::make_unique<RendererVulkan>();
-	s_Instance->m_Renderer->Init(fontCache);
-
-	// The font-reload routing (the engine cannot include Wisp
-	// headers, so the backend registers itself here; Wisp's shaders reload
-	// in the RHI with every other). The hot-reload
-	// client itself is stripped from TE_CONF_DIST builds.
-#if !defined(TE_CONF_DIST)
-	TinyEngine::HotReload::SetFontReloadCallback([](const std::string& path) {
-		return UIApplication::ReloadFont(path);
-	});
-#endif // !TE_CONF_DIST
+	s_Instance->m_FontCache = desc.Fonts;
+	s_Instance->m_Platform = desc.Platform;
+	s_Instance->m_Renderer = std::move(desc.Renderer);
+	s_Instance->m_WaitForRenderIdle = std::move(desc.WaitForRenderIdle);
 
 	// The default (main-window) context: created unbound; the first window
-	// that reaches the draw callback binds it.
+	// that reaches UpdateWindow binds it.
 	auto ctx = std::make_unique<WindowContext>();
 	ctx->RenderState = s_Instance->m_Renderer->CreateWindowState();
 	s_Instance->m_FocusedContext = ctx.get();
 	s_Instance->m_Contexts.push_back(std::move(ctx));
-
-	// The hooks are the RhiDevice subsystem's (registered here on the
-	// game thread, cleared in Shutdown).
-	TinyEngine::FrameDrawHooks& hooks = TinyEngine::Application::Get().GetEngine().Get<TinyEngine::RhiDevice>().GetFrameDrawHooks();
-
-	// T-F-B.3: the update runs on the main thread at the top of
-	// SwapBuffers (tick + paint + batch build + staging/atlas
-	// pre-creation + the screen-overlay submit); the draw callback
-	// below then records only, on a Loom worker.
-	hooks.SetWispUpdate([](const TinyEngine::FrameUpdateContext& context) {
-		UIApplication& app = Get();
-
-		WindowContext* ctx = app.GetWindowContext(context.WindowHandle);
-		if (!ctx)
-		{
-			// First frame of the main window: bind the default context.
-			ctx = app.GetDefaultContext();
-			if (!ctx || ctx->Window != nullptr) return;
-			ctx->Window = context.WindowHandle;
-		}
-		if (!ctx->Root) return;
-
-		app.TickAnimation(1.0f / 60.0f);
-
-		uint32_t w = context.Width;
-		uint32_t h = context.Height;
-
-		// The widget tree arranges in the LOGICAL space (the physical
-		// size divided by the scale); the renderer's ortho then scales
-		// the result back onto the full window.
-		const float uiScale = std::max(0.25f, TinyEngine::cvars::ui_scale.Get());
-		app.Tick(*ctx, (uint32_t)((float)w / uiScale), (uint32_t)((float)h / uiScale));
-
-		// Per-window mouse scale (logical -> physical) and content scale.
-		GLFWwindow* win = (GLFWwindow*)context.WindowHandle;
-		int logicalW = (int)context.Width, logicalH = (int)context.Height;
-		float csx = 1.0f, csy = 1.0f;
-		// The Offscreen mode has no GLFW window - the virtual size (the
-		// render context's) stands in for the window size and the
-		// content scale stays 1.
-		if (win)
-		{
-			glfwGetWindowSize(win, &logicalW, &logicalH);
-			glfwGetWindowContentScale(win, &csx, &csy);
-		}
-		ctx->MouseScale = { logicalW > 0 ? (float)w / logicalW : 1.0f,
-		                    logicalH > 0 ? (float)h / logicalH : 1.0f };
-		ctx->ContentScale = csx;
-
-		// The batch output builds into the engine's frame arena
-		// (slot = frame index % 2); the slot is reset before the build.
-		TinyEngine::FrameAllocator* arena = nullptr;
-		if (TinyEngine::Application::TryGet())
-		{
-			TinyEngine::Engine& engine = TinyEngine::Application::Get().GetEngine();
-			if (TinyEngine::MemorySubsystem* memory = engine.TryGet<TinyEngine::MemorySubsystem>())
-				arena = &memory->GetFrameAllocator();
-		}
-		BatchedDrawData& lastBatches = ctx->LastBatches[context.FrameIndex % 2];
-		if (arena)
-			arena->ResetSlot(context.FrameIndex);
-		lastBatches = BatchDrawList(ctx->DrawList, arena, context.FrameIndex);
-		if (!lastBatches.Vertices.empty())
-		{
-			lastBatches.DpiScale = 1.0f; // physical coords, no DPI scaling needed
-			// T-F-C: the staging slot pick keys on the frame index - the
-			// update (extract) and the record must agree (passed explicitly,
-			// never stored on the shared state).
-			app.m_Renderer->EnsureFrameResources(lastBatches, *ctx->RenderState, context.FrameIndex);
-		}
-
-		// Debug-draw SCREEN sub-batch: build + submit this window's screen
-		// primitives (focus overlay, reflector highlights) - recorded by
-		// the engine after ALL UI.
-		{
-			// The per-frame scratch is an app member, not a function-local
-			// static (no process-global mutable state) - the submit copies the
-			// vertices, so only the capacity carries over. Game thread (every
-			// window's update runs here in turn).
-			std::vector<TinyEngine::DebugDrawVertex>& screenVerts = app.m_ScreenOverlayScratch;
-			screenVerts.clear();
-			debug_draw::BuildScreen({ (float)logicalW, (float)logicalH }, screenVerts);
-			TinyEngine::DebugDrawVertices geometry;
-			geometry.Vertices = screenVerts.data();
-			geometry.VertexCount = static_cast<uint32_t>(screenVerts.size());
-			TinyEngine::RendererDebug::SubmitDebugScreenOverlay(geometry, { (float)logicalW, (float)logicalH }, context.WindowIndex);
-		}
-	});
-
-	// Register draw callback — Wisp handles its own rendering, per window.
-	// The context is backend-neutral: Wisp records into the pass's command
-	// list it carries (its FrameSlot() is
-	// the record slot), the window handle resolves the per-window context.
-	// Record-only: the update above owns the tick/paint.
-	hooks.SetWispDraw([](const TinyEngine::RenderPassContext& context) {
-		UIApplication& app = Get();
-
-		WindowContext* ctx = app.GetWindowContext(context.WindowHandle);
-		if (!ctx || !ctx->Root) return;
-
-		uint32_t w = context.Width;
-		uint32_t h = context.Height;
-
-		// The logical layout space shrinks by the scale; the ortho maps
-		// the logical rects back onto the full physical window - the
-		// whole surface (text + widgets + spacing) scales uniformly at
-		// this single boundary.
-		const float uiScale = std::max(0.25f, TinyEngine::cvars::ui_scale.Get());
-		const float logicalW = (float)w / uiScale;
-		const float logicalH = (float)h / uiScale;
-
-		const BatchedDrawData& batched = ctx->LastBatches[context.CommandList.FrameSlot() % 2];
-		if (!batched.Vertices.empty())
-		{
-			glm::mat4 ortho = TinyEngine::Math::Orthographic(0.0f, logicalW, 0.0f, logicalH, -1.0f, 1.0f);
-
-			// T-F-C: the staging slot pick keys on the list's frame slot
-			// (the update's extract index for the same frame).
-			app.m_Renderer->SetWindowViewport(*ctx->RenderState, w, h);
-			app.m_Renderer->RenderBatches(batched, ortho, *ctx->RenderState, context.CommandList);
-		}
-	});
 }
 
-bool UIApplication::ReloadFont(const std::string& assetPath)
+void UIApplication::UpdateWindow(void* window, uint32_t width, uint32_t height, uint32_t frameIndex, FrameArena* arena)
 {
-	if (!s_Instance || !s_Instance->m_FontCache)
-		return false;
-
-	std::vector<uint8_t> bytes = TinyEngine::TinyAssetLoader::LoadFont(assetPath);
-	if (bytes.empty())
+	WindowContext* ctx = GetWindowContext(window);
+	if (!ctx)
 	{
-		TE_CORE_WARN(TinyEngine::LogCore, "Wisp: font reload failed - keeping the current font.");
-		return true;
+		// First frame of the main window: bind the default context.
+		ctx = GetDefaultContext();
+		if (!ctx || ctx->Window != nullptr) return;
+		ctx->Window = window;
 	}
-	return s_Instance->m_FontCache->ReloadFontByPath(assetPath, bytes.data(), bytes.size());
+	if (!ctx->Root) return;
+
+	TickAnimation(1.0f / 60.0f);
+
+	const uint32_t w = width;
+	const uint32_t h = height;
+
+	// The widget tree arranges in the LOGICAL space (the physical size
+	// divided by the scale); the renderer's ortho then scales the result
+	// back onto the full window.
+	const float uiScale = std::max(0.25f, GetUiScale());
+	Tick(*ctx, (uint32_t)((float)w / uiScale), (uint32_t)((float)h / uiScale));
+
+	// Per-window mouse scale (logical -> physical) and content scale.
+	const auto* win = static_cast<const hearth::platform::Window*>(window);
+	int logicalW = (int)width, logicalH = (int)height;
+	float csx = 1.0f, csy = 1.0f;
+	// The Offscreen mode has no window - the virtual size (the render
+	// context's) stands in for the window size and the content scale
+	// stays 1.
+	if (win)
+	{
+		std::tie(logicalW, logicalH) = win->Size();
+		std::tie(csx, csy) = win->ContentScale();
+	}
+	ctx->MouseScale = { logicalW > 0 ? (float)w / logicalW : 1.0f,
+	                    logicalH > 0 ? (float)h / logicalH : 1.0f };
+	ctx->ContentScale = csx;
+
+	// The batch output builds into the host's frame arena; the slot is
+	// reset before the build.
+	BatchedDrawData& lastBatches = ctx->LastBatches[frameIndex % 2];
+	if (arena)
+		arena->ResetFrame(frameIndex);
+	lastBatches = BatchDrawList(ctx->DrawList, arena, frameIndex);
+	if (!lastBatches.Vertices.empty())
+	{
+		lastBatches.DpiScale = 1.0f; // physical coords, no DPI scaling needed
+		lastBatches.UiScale = GetUiScale();
+		lastBatches.GpuTimeBatches = GetGpuTimeBatches();
+		// T-F-C: the staging slot pick keys on the frame index - the
+		// update (extract) and the record must agree (passed explicitly,
+		// never stored on the shared state).
+		m_Renderer->PrepareFrame(lastBatches, *ctx->RenderState, frameIndex);
+	}
+}
+
+const BatchedDrawData* UIApplication::GetFrameBatches(void* window, uint32_t frameSlot, WindowRenderState** state) const
+{
+	WindowContext* ctx = GetWindowContext(window);
+	if (!ctx || !ctx->Root)
+		return nullptr;
+	const BatchedDrawData& batched = ctx->LastBatches[frameSlot % 2];
+	if (batched.Vertices.empty())
+		return nullptr;
+	if (state)
+		*state = ctx->RenderState.get();
+	return &batched;
+}
+
+bool UIApplication::CanPlaceWindows()
+{
+	return s_Instance && s_Instance->m_Platform && s_Instance->m_Platform->GetCaps().CanPlaceWindows;
+}
+
+bool UIApplication::CanTrackGlobalCursor()
+{
+	return s_Instance && s_Instance->m_Platform && s_Instance->m_Platform->GetCaps().CanTrackGlobalCursor;
+}
+
+bool UIApplication::IsKeyDown(void* window, int key) const
+{
+	if (!window)
+		if (WindowContext* focused = GetFocusedContext())
+			window = focused->Window;
+	return window && static_cast<const hearth::platform::Window*>(window)->IsKeyDown(key);
+}
+
+bool UIApplication::ReloadFont(const std::string& path, const uint8_t* bytes, size_t size)
+{
+	if (!m_FontCache)
+		return false;
+	return m_FontCache->ReloadFontByPath(path, bytes, size);
 }
 
 void UIApplication::Shutdown()
 {
 	if (!s_Instance) return;
-	{
-		TinyEngine::FrameDrawHooks& hooks = TinyEngine::Application::Get().GetEngine().Get<TinyEngine::RhiDevice>().GetFrameDrawHooks();
-		hooks.SetWispUpdate(nullptr);
-		hooks.SetWispDraw(nullptr);
-	}
 
 	// Per-window render state and roots must die before the renderer (they
 	// hold device resources), and the renderer before device shutdown.
@@ -206,11 +155,7 @@ void UIApplication::Shutdown()
 	{
 		ctx->Root.reset();
 		ctx->PopupRoot.reset();
-		if (ctx->RenderState)
-		{
-			s_Instance->m_Renderer->DestroyWindowState(ctx->RenderState);
-			ctx->RenderState = nullptr;
-		}
+		ctx->RenderState.reset();
 	}
 	s_Instance->m_Renderer.reset();
 	s_Instance->m_FocusedContext = nullptr;
@@ -241,7 +186,8 @@ WindowContext* UIApplication::CreateWindowContext(void* window, std::unique_ptr<
 	// The push_back can
 	// reallocate the list every window's draw callback walks on a record
 	// worker (GetWindowContext) - park every window's record first.
-	TinyEngine::GraphicsContext::WaitForAllWindowsRecordIdle();
+	if (m_WaitForRenderIdle)
+		m_WaitForRenderIdle();
 	auto ctx = std::make_unique<WindowContext>();
 	ctx->Window = window;
 	ctx->Root = std::move(root);
@@ -258,7 +204,8 @@ bool UIApplication::DestroyWindowContext(void* window)
 	// context's RenderState delete below, run under the same park - the
 	// dying window's own in-flight record may still be inside its draw
 	// callback (the OS window and its submit thread die after this call).
-	TinyEngine::GraphicsContext::WaitForAllWindowsRecordIdle();
+	if (m_WaitForRenderIdle)
+		m_WaitForRenderIdle();
 	for (auto it = m_Contexts.begin(); it != m_Contexts.end(); ++it)
 	{
 		if ((*it)->Window != window) continue;
@@ -293,11 +240,7 @@ bool UIApplication::DestroyWindowContext(void* window)
 		ctx->CaptureWidget = nullptr;
 		ctx->TooltipTarget = nullptr;
 		ctx->TooltipShown = false;
-		if (ctx->RenderState)
-		{
-			m_Renderer->DestroyWindowState(ctx->RenderState);
-			ctx->RenderState = nullptr;
-		}
+		ctx->RenderState.reset();
 
 		if (m_FocusedContext == ctx)
 		{
@@ -352,10 +295,6 @@ uint64_t UIApplication::CreateTexture(uint32_t width, uint32_t height, const uin
 	return m_Renderer ? m_Renderer->CreateTexture(width, height, rgbaData) : 0;
 }
 
-uint64_t UIApplication::WrapUIImageHandle(const TinyEngine::UIImageHandle& handle)
-{
-	return m_Renderer ? m_Renderer->WrapUIImageHandle(handle) : 0;
-}
 
 void UIApplication::UpdateTexture(uint64_t handle, uint32_t x, uint32_t y, uint32_t width, uint32_t height, const uint8_t* rgbaData)
 {
@@ -594,13 +533,20 @@ void UIApplication::SetMousePosition(const glm::vec2& screenPos)
 	SetMousePosition(nullptr, screenPos);
 }
 
+void UIApplication::SetUiScale(float scale)
+{
+	m_UiScale = scale;
+	if (m_FontCache)
+		m_FontCache->SetUiScale(scale);
+}
+
 void UIApplication::SetMousePosition(void* window, const glm::vec2& screenPos)
 {
 	WindowContext* ctx = window ? GetWindowContext(window) : GetFocusedContext();
 	if (!ctx) return;
 	// The physical position divides back into the logical layout space
 	// the widget tree arranges in.
-	const float uiScale = std::max(0.25f, TinyEngine::cvars::ui_scale.Get());
+	const float uiScale = std::max(0.25f, m_UiScale);
 	ctx->MousePos = { screenPos.x * ctx->MouseScale.x / uiScale, screenPos.y * ctx->MouseScale.y / uiScale };
 	if (m_DragOp)
 	{
@@ -634,24 +580,24 @@ glm::vec2 UIApplication::GetMousePos() const
 	return ctx ? ctx->MousePos : glm::vec2(-1, -1);
 }
 
-void UIApplication::SyncMousePositions()
+void UIApplication::SyncMousePositions(const glm::vec2& pointerPosition)
 {
 	for (auto& ctx : m_Contexts)
 	{
 		if (!ctx->Window) continue;
-		// Camera-look fix: use the warp-immune event position (Input's
-		// cursor callback caches GLFW's virtual position) rather than
-		// polling the REAL pointer - while the cursor is disabled for
-		// camera look, the real pointer teleports between the user's
-		// position and GLFW's warp target, which made the Wisp hover path
-		// (and anything keyed off it) flicker every frame.
-		glm::vec2 pos = TinyEngine::Input::GetMousePosition();
+		// Camera-look fix: the host passes the warp-immune event position
+		// (the last cursor-move event's) rather than polling the REAL
+		// pointer - while the cursor is disabled for camera look, the real
+		// pointer teleports between the user's position and the platform's
+		// warp target, which made the Wisp hover path (and anything keyed
+		// off it) flicker every frame.
+		const glm::vec2 pos = pointerPosition;
 		// The same logical-space conversion the event path applies - this
 		// per-frame refresh overwrites the event position, so it must
 		// divide too or the hover/click coordinates land in the physical
 		// space while the layout is the logical (the 1.5-scale
 		// "everything's off" bug).
-		const float uiScale = std::max(0.25f, TinyEngine::cvars::ui_scale.Get());
+		const float uiScale = std::max(0.25f, m_UiScale);
 		ctx->MousePos = { pos.x * ctx->MouseScale.x / uiScale, pos.y * ctx->MouseScale.y / uiScale };
 		if (m_DragOp && m_DragContext == ctx.get())
 			RouteDrag(ctx->MousePos);
@@ -1205,7 +1151,7 @@ void UIApplication::StartDrag(WindowContext& ctx, const glm::vec2& pos)
 	// The single capability gate: checked once at drag start. Tier-0
 	// platforms keep the single-window loop; Tier-1 routes the drag across
 	// windows.
-	op.CrossWindowRouting = TinyEngine::DetectWindowCaps().CanTrackGlobalCursor;
+	op.CrossWindowRouting = CanTrackGlobalCursor();
 	m_DragOp = std::move(op);
 	m_DragContext = &ctx;
 	m_DragTargetContext = &ctx;
@@ -1232,7 +1178,7 @@ void UIApplication::RouteDrag(const glm::vec2& pos)
 		// window pos + local. Candidate windows are hit in
 		// most-recently-focused order (GLFW exposes no stacking order; MRU
 		// matches stacking in practice).
-		auto srcPos = TinyEngine::TryGetWindowPos((GLFWwindow*)srcCtx->Window);
+		auto srcPos = WindowPosition(srcCtx->Window);
 		if (srcPos)
 		{
 			glm::vec2 global = { (float)srcPos->first + pos.x, (float)srcPos->second + pos.y };
@@ -1249,10 +1195,9 @@ void UIApplication::RouteDrag(const glm::vec2& pos)
 			targetCtx = nullptr;
 			for (WindowContext* cand : candidates)
 			{
-				auto wp = TinyEngine::TryGetWindowPos((GLFWwindow*)cand->Window);
+				auto wp = WindowPosition(cand->Window);
 				if (!wp) continue;
-				int fw = 0, fh = 0;
-				glfwGetFramebufferSize((GLFWwindow*)cand->Window, &fw, &fh);
+				const auto [fw, fh] = static_cast<const hearth::platform::Window*>(cand->Window)->FramebufferSize();
 				if (global.x >= (float)wp->first && global.x <= (float)wp->first + (float)fw
 					&& global.y >= (float)wp->second && global.y <= (float)wp->second + (float)fh)
 				{
@@ -1627,21 +1572,21 @@ void UIApplication::Tick(WindowContext& ctx, uint32_t viewportWidth, uint32_t vi
 			}
 		}
 
-		// Focus debug overlay — emitted through the debug_draw SCREEN batch
-		// (drawn after all UI; the focused widget sits at a higher layer).
+		// Focus debug overlay - the window's own top layers, above the
+		// popups and the drag ghost (the focused widget one layer higher).
 		if (m_FocusDebugOverlay)
 		{
 			for (auto& e : m_FocusRegistry)
 			{
 				glm::vec4 col = glm::vec4(0.3f, 0.5f, 0.8f, 0.4f);
-				int layer = 1;
+				int layer = kOverlayLayer + 1;
 				if (e.widget == m_FocusWidget)
 				{
 					col = glm::vec4(0.2f, 0.9f, 0.3f, 0.6f);
-					layer = 2;
+					layer = kOverlayLayer + 2;
 				}
 
-				debug_draw::DrawRect2D(e.min, e.max, col, { 1.0f, 0.0f, layer });
+				ctx.DrawList.AddBox(layer, e.min, e.max - e.min, col, -1);
 			}
 		}
 	}
@@ -1661,7 +1606,8 @@ void UIApplication::Tick(WindowContext& ctx, uint32_t viewportWidth, uint32_t vi
 			{
 				glm::vec2 selMin = g.LocalToAbsolute({0,0});
 				glm::vec2 selSize = g.LocalSize;
-				debug_draw::DrawRectOutline2D(selMin, selMin + selSize, m_HighlightColor, { 2.0f, 0.0f, 3 });
+				const float square[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+				ctx.DrawList.AddRoundedBox(kOverlayLayer + 3, selMin, selSize, glm::vec4(0.0f), square, 2.0f, m_HighlightColor, -1);
 				return true;
 			}
 			ArrangedChildren ac;
@@ -1684,31 +1630,22 @@ void UIApplication::ApplyCursor(WindowContext& ctx, CursorType desired)
 {
 	if (desired == ctx.CurrentCursor) return;
 	ctx.CurrentCursor = desired;
-	GLFWwindow* win = (GLFWwindow*)ctx.Window;
+	auto* win = static_cast<hearth::platform::Window*>(ctx.Window);
 	if (!win) return;
 
-	if (ctx.CachedCursor)
-		glfwDestroyCursor((GLFWcursor*)ctx.CachedCursor);
-	ctx.CachedCursor = nullptr;
-
-	if (desired == CursorType::Default)
-	{
-		glfwSetCursor(win, nullptr);
-		return;
-	}
-
-	int shape = GLFW_ARROW_CURSOR;
+	// The platform window keeps its cursor objects (one per window).
+	using hearth::platform::CursorShape;
+	std::optional<CursorShape> shape;
 	switch (desired)
 	{
-	case CursorType::Default:       shape = GLFW_ARROW_CURSOR; break;
-	case CursorType::TextEditBeam:  shape = GLFW_IBEAM_CURSOR; break;
-	case CursorType::Hand:          shape = GLFW_HAND_CURSOR; break;
-	case CursorType::ResizeEW:      shape = GLFW_HRESIZE_CURSOR; break;
-	case CursorType::ResizeNS:      shape = GLFW_VRESIZE_CURSOR; break;
-	case CursorType::Crosshair:     shape = GLFW_CROSSHAIR_CURSOR; break;
+	case CursorType::Default:       shape = std::nullopt; break;
+	case CursorType::TextEditBeam:  shape = CursorShape::IBeam; break;
+	case CursorType::Hand:          shape = CursorShape::Hand; break;
+	case CursorType::ResizeEW:      shape = CursorShape::ResizeEW; break;
+	case CursorType::ResizeNS:      shape = CursorShape::ResizeNS; break;
+	case CursorType::Crosshair:     shape = CursorShape::Crosshair; break;
 	}
-	ctx.CachedCursor = glfwCreateStandardCursor(shape);
-	glfwSetCursor(win, (GLFWcursor*)ctx.CachedCursor);
+	win->SetCursorShape(shape);
 }
 
 void UIApplication::RefreshCursor()

@@ -1,6 +1,5 @@
 // The size map's implementation.
 
-#include "tepch.h"
 #include "Wisp/Graph/SizeMap.h"
 
 #include <algorithm>

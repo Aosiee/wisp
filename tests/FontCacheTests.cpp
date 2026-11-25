@@ -1,61 +1,29 @@
-#pragma once
-
 // The glyph atlas packs every size it is asked for without writing past
-// its buffer - the Script Editor's zoom rasterizes each size anew, and a
+// its buffer - a code editor's zoom rasterizes each size anew, and a
 // tall glyph on a shelf near the atlas bottom was written past it (a
 // SIGABRT under the dev build's bounds assertions). The test bakes a
 // real face at every zoom size and beyond, through the growth and the
 // recycle at the maximum size.
 
-#include "doctest/doctest.h"
+#include "hamr/test.h"
 #include "Wisp/FontCache.h"
-#include "TinyEngine/CVar/CVarRegistry.h"
-#include "TinyEngine/CVar/EngineCVars.h"
-#include "TinyEngine/Core/Engine.h"
 
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <vector>
 
-namespace wisp_font_tests {
-
-	inline std::filesystem::path WorkspaceFile(const char* relative)
-	{
-		for (std::filesystem::path dir = std::filesystem::current_path(); !dir.empty(); dir = dir.parent_path())
-		{
-			if (std::filesystem::exists(dir / ".tinyengine-workspace"))
-				return dir / relative;
-			if (dir == dir.parent_path())
-				break;
-		}
-		return relative;
-	}
-
-} // namespace wisp_font_tests
-
 TEST_CASE("wisp font cache: every size packs inside the atlas - growth, then the recycle at the maximum")
 {
-	const std::filesystem::path path = wisp_font_tests::WorkspaceFile("plugins/engine/engine/content/fonts/adwaita/AdwaitaMono-Regular.ttf");
+	// WISP_TEST_FONTS_DIR: the build names tests/fonts.
+	const std::filesystem::path path = std::filesystem::path(WISP_TEST_FONTS_DIR) / "AdwaitaMono-Regular.ttf";
 	std::ifstream in(path, std::ios::binary);
 	REQUIRE_MESSAGE(in, "the test face is missing: " << path.string());
 	const std::vector<uint8_t> ttf((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 
-	// The glyphs rasterize at ui.scale (a registered cvar - unregistered it
-	// reads 0 and every bitmap is empty).
-	struct CVarEngine
-	{
-		TinyEngine::Engine engine{ TinyEngine::EngineDesc{
-			.ReflectionRegistrars = {},
-			.SubsystemRegistrars = { [](TinyEngine::Engine& e) { e.Add<TinyEngine::cvar::CVarRegistry>(); } },
-			.CVarRegistrars = { &TinyEngine::cvar::RegisterEngineCVars },
-		} };
-		CVarEngine() { engine.Init(); }
-		~CVarEngine() { engine.Shutdown(); }
-	} cvars;
-	REQUIRE(TinyEngine::cvars::ui_scale.Get() == doctest::Approx(1.0f));
-
+	// The glyphs rasterize at the cache's UI scale, 1 unless the host sets it.
 	wisp::FontCache cache;
+	REQUIRE(cache.GetUiScale() == hamr::test::Approx(1.0f));
 	const wisp::FontHandle font = cache.AddFont(ttf.data(), ttf.size());
 	int missing = 0, outside = 0;
 	auto bake = [&](uint32_t cp, float size) {

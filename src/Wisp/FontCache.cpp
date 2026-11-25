@@ -10,8 +10,7 @@
 #pragma GCC diagnostic pop
 
 #include "Wisp/FontCache.h"
-#include "TinyEngine/Core/Log.h"
-#include "TinyEngine/CVar/EngineCVars.h"
+#include "Wisp/Log.h"
 #include <algorithm>
 #include <cstring>
 
@@ -125,7 +124,7 @@ const GlyphInfo* FontCache::GetGlyph(FontHandle font, uint32_t codepoint, float 
 	// space is unchanged - the renderer scales the geometry). A scale
 	// change drops the cache + the atlas (the dirty flag drives the
 	// existing rebuild).
-	const float uiScale = TinyEngine::cvars::ui_scale.Get();
+	const float uiScale = m_UiScale;
 	if (uiScale != m_RasterizedScale)
 	{
 		m_RasterizedScale = uiScale;
@@ -189,7 +188,7 @@ bool FontCache::RasterizeGlyph(FontHandle font, uint32_t codepoint, float pixelS
 		if (!PackRect((uint32_t)bw, (uint32_t)bh, atlasX, atlasY))
 		{
 			// A full atlas at its maximum size is recycled: every glyph
-			// re-rasterizes on demand (the Script Editor's zoom bakes each
+			// re-rasterizes on demand (a code editor's zoom bakes each
 			// size anew).
 			if (!GrowAtlas())
 				ResetAtlasPacking();
@@ -239,7 +238,7 @@ bool FontCache::PackRect(uint32_t w, uint32_t h, uint32_t& outX, uint32_t& outY)
 
 	// Try to fit in current shelf - it must fit DOWN too: a glyph taller than
 	// the shelf so far, on a shelf near the bottom, was written past the atlas
-	// (the Script Editor zoom crash).
+	// (a code editor's zoom crashed on it).
 	if (m_ShelfX + w + padding * 2 <= m_AtlasWidth && m_ShelfY + h + padding * 2 <= m_AtlasHeight)
 	{
 		outX = m_ShelfX + padding;

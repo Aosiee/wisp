@@ -1,5 +1,3 @@
-#pragma once
-
 // The editor's colours read, the crash surfaces' included: every text
 // token on every surface text sits on at WCAG's 4.5:1, icons at 3:1, plus
 // the crash surfaces' own pairs. A token change that drops a pair below
@@ -7,7 +5,7 @@
 
 #include "Wisp/StyleTokens.h"
 
-#include <doctest/doctest.h>
+#include "hamr/test.h"
 
 #include <string>
 
@@ -30,11 +28,11 @@ namespace wisp_contrast_tests {
 
 TEST_CASE("wisp tokens: the contrast ratio is WCAG's")
 {
-	CHECK(tokens::ContrastRatio(tokens::Hex(0xFFFFFF), tokens::Hex(0x000000)) == doctest::Approx(21.0f).epsilon(0.001));
-	CHECK(tokens::ContrastRatio(tokens::Hex(0x777777), tokens::Hex(0x777777)) == doctest::Approx(1.0f));
+	CHECK(tokens::ContrastRatio(tokens::Hex(0xFFFFFF), tokens::Hex(0x000000)) == hamr::test::Approx(21.0f).epsilon(0.001));
+	CHECK(tokens::ContrastRatio(tokens::Hex(0x777777), tokens::Hex(0x777777)) == hamr::test::Approx(1.0f));
 	// Order doesn't matter; a translucent foreground is composited first.
-	CHECK(tokens::ContrastRatio(tokens::Panel, tokens::TextPrimary) == doctest::Approx(tokens::ContrastRatio(tokens::TextPrimary, tokens::Panel)));
-	CHECK(tokens::ContrastRatio(tokens::WithAlpha(tokens::TextPrimary, 0.0f), tokens::Panel) == doctest::Approx(1.0f));
+	CHECK(tokens::ContrastRatio(tokens::Panel, tokens::TextPrimary) == hamr::test::Approx(tokens::ContrastRatio(tokens::TextPrimary, tokens::Panel)));
+	CHECK(tokens::ContrastRatio(tokens::WithAlpha(tokens::TextPrimary, 0.0f), tokens::Panel) == hamr::test::Approx(1.0f));
 }
 
 TEST_CASE("wisp tokens: the crash reporter's text reads at 4.5:1")

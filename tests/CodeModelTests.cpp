@@ -1,11 +1,9 @@
-#pragma once
-
 // The code editor's headless model - the line document, caret movement,
 // editing (auto-indent, pairs, multi-caret, line operations), undo
 // coalescing and the dirty state, find/replace, indentation folding with
 // the visible-line mapping, and the Luau tokenizer's carried state.
 
-#include "doctest/doctest.h"
+#include "hamr/test.h"
 #include "Wisp/Code/EditorModel.h"
 #include "Wisp/Code/Tokenizer.h"
 

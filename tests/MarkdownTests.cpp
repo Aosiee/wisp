@@ -1,10 +1,8 @@
-#pragma once
-
 // The manual's Markdown parser - the block structure (headings, fences,
 // nested lists, callouts, tables), the inline spans (emphasis, code,
 // links, doc links, images, escapes).
 
-#include "doctest/doctest.h"
+#include "hamr/test.h"
 #include "Wisp/Doc/Markdown.h"
 
 namespace wisp_markdown_tests {

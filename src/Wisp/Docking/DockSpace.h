@@ -1,12 +1,14 @@
 #pragma once
 
 #include "Wisp/Core.h"
+#include "Wisp/Log.h"
 #include "Wisp/DrawList.h"
 #include "Wisp/FontCache.h"
 #include "Wisp/Style.h"
 #include "Wisp/Theme.h"
 #include "Wisp/Application.h"
 #include "Wisp/Docking/DockModel.h"
+#include "hearth/platform/Window.h"
 #include "Wisp/Docking/DockState.h"
 #include "Wisp/Docking/TabWell.h"
 #include "Wisp/StyleTokens.h"
@@ -17,11 +19,9 @@
 #include "Wisp/Components/Button.h"
 #include "Wisp/Components/TextBlock.h"
 #include "Wisp/Components/SizeBox.h"
-#if !defined(TE_CONF_DIST)
+#if defined(WISP_DEBUG_TOOLS)
 #include "Wisp/Components/WidgetReflector.h"
-#endif // !TE_CONF_DIST
-#include "TinyEngine/Core/Application.h"
-#include "TinyEngine/Core/Log.h"
+#endif // WISP_DEBUG_TOOLS
 #include <cstring>
 #include <functional>
 #include <memory>
@@ -270,7 +270,7 @@ public:
 	void Trace(const std::string& msg) const
 	{
 		if (m_Trace)
-			TE_CORE_INFO(TinyEngine::LogCore, "DOCK: {0}", msg);
+			HEARTH_LOG_INFO(::wisp::LogWisp, "DOCK: {0}", msg);
 	}
 
 	void MoveFloatingPanel(dock::NodeId floatingId, const glm::vec2& pos)
@@ -624,13 +624,13 @@ public:
 			dock::NodeId newWin = dock::OpenWindow(model, well, idx);
 			self->Trace("OpenWindow well=" + std::to_string(well) + " panel=" + panel
 				+ " -> window=" + std::to_string(newWin) + " (tear-out)");
-			if (newWin && TinyEngine::DetectWindowCaps().CanPlaceWindows)
+			if (newWin && UIApplication::CanPlaceWindows())
 			{
 				WindowContext* ctx = UIApplication::IsValid()
 					? UIApplication::Get().GetContextContaining(self) : nullptr;
 				if (ctx)
 				{
-					auto wp = TinyEngine::TryGetWindowPos((GLFWwindow*)ctx->Window);
+					auto wp = ctx->Window ? static_cast<const hearth::platform::Window*>(ctx->Window)->Position() : std::nullopt;
 					if (wp)
 					{
 						glm::vec2 global = { (float)wp->first + op.CurrentPos.x, (float)wp->second + op.CurrentPos.y };
@@ -924,7 +924,7 @@ private:
 	{
 		m_State->AddTraceSink(this, [this](const std::string& msg) {
 			if (m_Trace)
-				TE_CORE_INFO(TinyEngine::LogCore, "DOCK: {0}", msg);
+				HEARTH_LOG_INFO(::wisp::LogWisp, "DOCK: {0}", msg);
 		});
 	}
 

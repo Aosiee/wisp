@@ -125,7 +125,7 @@ namespace wisp {
 		// Scrolls so the primary caret is in view at the next paint.
 		void RevealCaret() { m_RevealCaret = true; }
 
-		// The host's commands (the Script Editor panel's).
+		// The host's commands (a script editor panel's, say).
 		void SetOnSave(std::function<void()> fn) { m_OnSave = std::move(fn); }
 		void SetOnFind(std::function<void(bool replace)> fn) { m_OnFind = std::move(fn); }
 		void SetOnGoToLine(std::function<void()> fn) { m_OnGoToLine = std::move(fn); }

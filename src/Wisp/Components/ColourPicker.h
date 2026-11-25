@@ -14,8 +14,6 @@
 #include "Wisp/Components/Border.h"
 #include "Wisp/Components/ValueBox.h"
 #include "Wisp/Components/EditableText.h"
-#include "assetio/ImageDecode.h" // every decode states its orientation
-#include "stb_image.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -57,9 +55,10 @@ struct ColourPaletteData
 
 // Samples the pixel under the OS cursor (whole screen - other windows AND
 // the app's own canvas). Wayland/Hyprland route: `hyprctl cursorpos`
-// (logical coords) + `grim -g "<x>,<y> 1x1"` (grim's geometry is logical
-// and it scales the output itself). Returns {-1,-1,-1,-1} when sampling
-// is unavailable (no hyprctl/grim, or capture failure).
+// (logical coords) + `grim -t ppm -g "<x>,<y> 1x1" -` (grim's geometry is
+// logical and it scales the output itself; a binary PPM on stdout, read
+// here). Returns {-1,-1,-1,-1} when sampling is unavailable (no
+// hyprctl/grim, or capture failure).
 inline glm::vec4 SampleScreenPixelAtCursor()
 {
 	glm::vec4 fallback{ -1.0f, -1.0f, -1.0f, -1.0f };
@@ -73,16 +72,18 @@ inline glm::vec4 SampleScreenPixelAtCursor()
 	if (std::sscanf(buf, "%d, %d", &x, &y) != 2) return fallback;
 
 	char cmd[320];
-	std::snprintf(cmd, sizeof(cmd), "grim -g \"%d,%d 1x1\" /tmp/wisp_eyedrop.png 2>/dev/null", x, y);
-	if (std::system(cmd) != 0) return fallback;
-
-	int w = 0, h = 0, n = 0;
-	unsigned char* data = TinyEngine::DecodeImageFile8("/tmp/wisp_eyedrop.png", &w, &h, &n, 4, TinyEngine::ImageOrientation::AsStored);
-	if (!data) return fallback;
-	glm::vec4 col{ data[0] / 255.0f, data[1] / 255.0f, data[2] / 255.0f, data[3] / 255.0f };
-	stbi_image_free(data);
-	std::remove("/tmp/wisp_eyedrop.png");
-	return col;
+	std::snprintf(cmd, sizeof(cmd), "grim -t ppm -g \"%d,%d 1x1\" - 2>/dev/null", x, y);
+	FILE* capture = popen(cmd, "r");
+	if (!capture) return fallback;
+	// P6, then the width, height and maximum value, then one whitespace
+	// byte and the pixel's three bytes.
+	int width = 0, height = 0, maxValue = 0;
+	const bool header = std::fscanf(capture, "P6 %d %d %d", &width, &height, &maxValue) == 3 && std::fgetc(capture) != EOF;
+	unsigned char rgb[3] = {};
+	const bool pixel = header && width >= 1 && height >= 1 && maxValue == 255 && std::fread(rgb, 1, 3, capture) == 3;
+	pclose(capture);
+	if (!pixel) return fallback;
+	return { rgb[0] / 255.0f, rgb[1] / 255.0f, rgb[2] / 255.0f, 1.0f };
 }
 
 struct ColourPickerState
