@@ -4,10 +4,11 @@ Each release is an annotated tag (`v0.x.0`, or `v0.x.y` for a release of
 fixes only) whose message is the entry below. Versions before 1.0 may change
 the API; every entry says what callers need to change.
 
-## Unreleased
+## 0.3.0
 
 Applets: Wisp as a program of its own, on Hearth's `hearth::App`.
 
+- Built on Hearth 0.5.0.
 - `wisp::applet` (`Wisp/Applet/Applet.h`): `wisp::Applet` starts the
   application with `RhiRenderer`, puts the main window's `RhiFrameClient`
   on the app's presenter, routes the platform's events to Wisp by window,
@@ -27,8 +28,8 @@ Applets: Wisp as a program of its own, on Hearth's `hearth::App`.
 - The GPU suite draws: an applet's root read back from the offscreen
   image, and the input script clicking a button.
 
-Nothing changes for callers of 0.2. Wisp needs the Hearth that has
-`hearth::app` (`-DWISP_APPLET=OFF` builds without the applet and the
+Nothing changes for callers of 0.2. Wisp needs Hearth 0.5.0 (for
+`hearth::app`; `-DWISP_APPLET=OFF` builds without the applet and the
 gallery).
 
 ## 0.2.0
