@@ -4,6 +4,13 @@ Each release is an annotated tag (`v0.x.0`, or `v0.x.y` for a release of
 fixes only) whose message is the entry below. Versions before 1.0 may change
 the API; every entry says what callers need to change.
 
+## 0.1.1
+
+- Built on Hearth 0.1.1: Hearth 0.1.0 names a GLFW commit that can no
+  longer be fetched, so Wisp 0.1.0 does not build from source.
+
+Nothing changes for callers.
+
 ## 0.1.0
 
 The first release: TinyEngine's UI library as a library of its own, moved
