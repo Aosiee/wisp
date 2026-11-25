@@ -33,10 +33,11 @@ set(WISP_STB_DIR "" CACHE PATH "An stb checkout (empty: fetch the pinned commit)
 set(WISP_HAMR_DIR "" CACHE PATH "A hamr checkout, for the suite's test library (empty: fetch the pinned commit)")
 set(WISP_GLSLANG_DIR "" CACHE PATH "A glslang checkout, for the shader tools (empty: fetch the pinned tag)")
 
-# The pinned dependencies: Hearth (the host seam and the platform), tmath
+# The pinned dependencies: Hearth (the host seam, the platform and, for
+# wisp::rhi, the GPU layer and its window presenter), tmath
 # (and glm through it), RapidJSON (the dock layout's files), stb_truetype
 # (the glyph rasterizer) and hamr's C++ test library for the suite.
-set(WISP_HEARTH_COMMIT 61f9cbf2b96bc0f3250f90f19176012bdd9be71f) # Hearth dev (the presenter)
+set(WISP_HEARTH_COMMIT 3ecc667823ba792343b4a803ff0b99177c4abac3) # Hearth 0.3.0 (v0.3.0)
 set(WISP_TMATH_COMMIT 20226ccfd033d66985a720da5028b5887c74ee74) # tmath 0.1.0 (v0.1.0)
 set(WISP_RAPIDJSON_COMMIT 24b5e7a8b27f42fa16b96fc70aade9106cf7102f)
 set(WISP_STB_COMMIT 6b5799bae8a1fe3792691ef4b72ae26434c3e799)
