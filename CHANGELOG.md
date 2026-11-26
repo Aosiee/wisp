@@ -4,9 +4,10 @@ Each release is an annotated tag (`v0.x.0`, or `v0.x.y` for a release of
 fixes only) whose message is the entry below. Versions before 1.0 may change
 the API; every entry says what callers need to change.
 
-## Unreleased
+## 0.4.0
 
-The immediate-mode layer.
+The immediate-mode layer. Every change is an addition: no caller needs to
+change.
 
 - `wisp::im` (`Wisp/Im/Immediate.h`): `ImmediateHost`, a widget whose
   frame function describes its content every frame through `im::Context`.
