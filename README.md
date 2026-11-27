@@ -188,8 +188,13 @@ there by CI; when enough has gathered, `dev` becomes the next release. See
 
 ## License
 
-The Wisp License: MIT-style, with one condition: a product that includes
-Wisp credits it in its credits or about box. See [LICENSE](LICENSE).
+wisp is released under the Odd Fish Society License ([`LICENSE`](LICENSE)), which is MIT
+with one added condition. A product that includes wisp credits it in its credits, about
+box or documentation, as "Uses wisp - Copyright (c) 2026 Odd Fish Society / Felipe
+Lara". A product that uses several Odd Fish Society libraries can credit them together,
+on one line or several, such as "Uses kiln, cluau and wisp - Copyright (c) 2026 Odd Fish
+Society / Felipe Lara". No logo or splash screen is required.
+
 TinyIcons is Wisp's, under the same license. JetBrains Mono, built into
 `wisp::fonts`, and the suite's test face, Adwaita Mono, are under the SIL
 Open Font License ([fonts/ttf/JetBrainsMono-OFL.txt](fonts/ttf/JetBrainsMono-OFL.txt),
